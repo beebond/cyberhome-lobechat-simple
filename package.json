@@ -9,8 +9,8 @@
   },
   "dependencies": {
     "next": "^14.2.35",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "@lobehub/chat": "^1.32.4",
     "@lobehub/ui": "^4.33.4",
     "openai": "^4.40.1",
