@@ -8,7 +8,7 @@
     "start": "next start --hostname 0.0.0.0 --port 8080"
   },
   "dependencies": {
-    "next": "^14.2.35",
+    "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "@lobehub/chat": "^1.32.4",
