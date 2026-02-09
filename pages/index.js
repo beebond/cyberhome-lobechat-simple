@@ -1,6 +1,6 @@
 import dynamic from 'next/dynamic'
 
-const LobeChat = dynamic(() => import('@lobehub/chat').then(mod => mod.LobeChat), {
+const LobeChat = dynamic(() => import('@lobehub/chat'), {
   ssr: false,
   loading: () => <div>Loading...</div>
 })
