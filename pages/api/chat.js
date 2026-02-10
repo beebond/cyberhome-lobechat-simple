@@ -1,4 +1,4 @@
-﻿// pages/api/chat.js - OpenAI 集成版本
+// pages/api/chat.js - OpenAI 集成版本
 import OpenAI from 'openai';
 
 export default async function handler(req, res) {
@@ -15,9 +15,20 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
+    // === 调试环境变量 ===
+    console.log('=== pages/api/chat.js 环境变量调试 ===');
+    console.log('当前NODE_ENV:', process.env.NODE_ENV);
+    console.log('OPENAI_API_KEY 存在吗？', 'OPENAI_API_KEY' in process.env);
+    console.log('OPENAI_API_KEY 值长度:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0);
+    console.log('所有OPENAI相关的环境变量:', Object.keys(process.env).filter(k => k.includes('OPENAI')));
+    console.log('环境变量实际值前5位:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 5) + '...' : '空');
+    // === 调试结束 ===
+
     // 初始化 OpenAI（从环境变量读取 API Key）
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
+      // 如果使用 Azure OpenAI 或其他兼容API，取消下面注释：
+      // baseURL: process.env.OPENAI_BASE_URL,
     });
 
     // 系统提示词
@@ -57,6 +68,7 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('OpenAI API Error:', error.message);
+    console.error('完整错误堆栈:', error);
     
     // 返回降级响应
     res.status(500).json({
