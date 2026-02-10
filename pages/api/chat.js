@@ -15,14 +15,25 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // === 调试环境变量 ===
-    console.log('=== pages/api/chat.js 环境变量调试 ===');
-    console.log('当前NODE_ENV:', process.env.NODE_ENV);
-    console.log('OPENAI_API_KEY 存在吗？', 'OPENAI_API_KEY' in process.env);
-    console.log('OPENAI_API_KEY 值长度:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0);
-    console.log('所有OPENAI相关的环境变量:', Object.keys(process.env).filter(k => k.includes('OPENAI')));
-    console.log('环境变量实际值前5位:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 5) + '...' : '空');
-    // === 调试结束 ===
+    // === 诊断环境变量 ===
+    console.log('=== 开始环境变量诊断 ===');
+    console.log('1. 当前时间:', new Date().toISOString());
+    console.log('2. NODE_ENV:', process.env.NODE_ENV);
+    console.log('3. 直接读取 OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? '存在（已隐藏值）' : '不存在');
+    console.log('4. OPENAI_API_KEY 长度:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0);
+    console.log('5. 前5位字符:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 5) + '...' : '空');
+    console.log('6. 所有包含 "OPENAI" 的变量:', Object.keys(process.env).filter(k => k.includes('OPENAI')).join(', '));
+    console.log('7. Railway 系统变量 RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN || '未找到');
+    console.log('8. Railway 系统变量 RAILWAY_SERVICE_NAME:', process.env.RAILWAY_SERVICE_NAME || '未找到');
+    console.log('9. 当前目录文件（前5个）:', require('fs').readdirSync('.').slice(0, 5).join(', '));
+    console.log('=== 诊断结束 ===');
+    
+    // 诊断：检查是否是 Railway 环境变量注入问题
+    const testApiKey = process.env.OPENAI_API_KEY;
+    if (!testApiKey || testApiKey.trim() === '') {
+      console.error('❌ 错误：OPENAI_API_KEY 为空或未定义');
+      console.error('   所有可用的环境变量键:', Object.keys(process.env).sort().join(', '));
+    }
 
     // 初始化 OpenAI（从环境变量读取 API Key）
     const openai = new OpenAI({
@@ -67,15 +78,22 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('OpenAI API Error:', error.message);
-    console.error('完整错误堆栈:', error);
+    console.error('❌ OpenAI API 错误:', error.message);
+    console.error('🔍 完整错误堆栈:', error.stack);
+    console.error('📋 错误详情:', {
+      name: error.name,
+      code: error.code,
+      status: error.status,
+      headers: error.headers
+    });
     
     // 返回降级响应
     res.status(500).json({
       response: '抱歉，AI服务暂时不可用，请稍后再试。',
       sessionId: req.body.sessionId || Date.now().toString(),
       error: true,
-      errorMessage: error.message
+      errorMessage: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 }
