@@ -1,4 +1,4 @@
-// pages/api/chat.js - OpenAI 集成版本
+// pages/api/chat.js - OpenAI 集成版本（已集成FAQ知识库）
 import OpenAI from 'openai';
 
 export default async function handler(req, res) {
@@ -15,34 +15,54 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // === 诊断环境变量 ===
+    // === 第一步：先查 FAQ 知识库（私有网络直连）===
+    try {
+      console.log('🔍 正在查询FAQ知识库...');
+      
+      const faqResponse = await fetch('https://cyberhome-faq-api-production.up.railway.internal/api/faq/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
+
+      const faqData = await faqResponse.json();
+      console.log('📚 FAQ查询结果:', {
+        hasExactMatch: faqData.hasExactMatch,
+        resultCount: faqData.totalResults
+      });
+
+      // 如果有高置信度的匹配答案（score > 15）
+      if (faqData.hasExactMatch && faqData.suggestedAnswer) {
+        console.log('✅ 命中FAQ知识库，直接返回答案');
+        return res.status(200).json({
+          response: faqData.suggestedAnswer,
+          fromFaq: true,
+          sessionId: sessionId || Date.now().toString(),
+          timestamp: new Date().toISOString(),
+          source: 'knowledge_base'
+        });
+      }
+    } catch (faqError) {
+      // FAQ 服务不可用时不中断流程，继续调用 OpenAI
+      console.error('⚠️ FAQ 知识库查询失败:', faqError.message);
+    }
+
+    // === 第二步：没有FAQ匹配，调用 OpenAI ===
+    console.log('🤖 未匹配FAQ，调用OpenAI...');
+
+    // 诊断环境变量（保留你的诊断代码）
     console.log('=== 开始环境变量诊断 ===');
     console.log('1. 当前时间:', new Date().toISOString());
     console.log('2. NODE_ENV:', process.env.NODE_ENV);
-    console.log('3. 直接读取 OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? '存在（已隐藏值）' : '不存在');
-    console.log('4. OPENAI_API_KEY 长度:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0);
-    console.log('5. 前5位字符:', process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.substring(0, 5) + '...' : '空');
-    console.log('6. 所有包含 "OPENAI" 的变量:', Object.keys(process.env).filter(k => k.includes('OPENAI')).join(', '));
-    console.log('7. Railway 系统变量 RAILWAY_PUBLIC_DOMAIN:', process.env.RAILWAY_PUBLIC_DOMAIN || '未找到');
-    console.log('8. Railway 系统变量 RAILWAY_SERVICE_NAME:', process.env.RAILWAY_SERVICE_NAME || '未找到');
-    console.log('9. 当前目录文件（前5个）:', require('fs').readdirSync('.').slice(0, 5).join(', '));
+    console.log('3. OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? '存在（已隐藏值）' : '不存在');
     console.log('=== 诊断结束 ===');
-    
-    // 诊断：检查是否是 Railway 环境变量注入问题
-    const testApiKey = process.env.OPENAI_API_KEY;
-    if (!testApiKey || testApiKey.trim() === '') {
-      console.error('❌ 错误：OPENAI_API_KEY 为空或未定义');
-      console.error('   所有可用的环境变量键:', Object.keys(process.env).sort().join(', '));
-    }
 
-    // 初始化 OpenAI（从环境变量读取 API Key）
+    // 初始化 OpenAI
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
-      // 如果使用 Azure OpenAI 或其他兼容API，取消下面注释：
-      // baseURL: process.env.OPENAI_BASE_URL,
     });
 
-    // 系统提示词
+    // 系统提示词（保持不变）
     const systemPrompt = `你是CYBERHOME的专业电子产品导购助手，请用中文回答。
 你的职责：
 1. 根据用户需求推荐合适的产品
@@ -69,30 +89,23 @@ export default async function handler(req, res) {
 
     const aiResponse = completion.choices[0].message.content;
 
-    // 返回响应
+    // 返回 OpenAI 响应
     res.status(200).json({
       response: aiResponse,
+      fromFaq: false,
       sessionId: sessionId || Date.now().toString(),
       timestamp: new Date().toISOString(),
       model: 'gpt-3.5-turbo',
+      source: 'openai'
     });
 
   } catch (error) {
-    console.error('❌ OpenAI API 错误:', error.message);
-    console.error('🔍 完整错误堆栈:', error.stack);
-    console.error('📋 错误详情:', {
-      name: error.name,
-      code: error.code,
-      status: error.status,
-      headers: error.headers
-    });
+    console.error('❌ API 错误:', error.message);
     
-    // 返回降级响应
     res.status(500).json({
       response: '抱歉，AI服务暂时不可用，请稍后再试。',
       sessionId: req.body.sessionId || Date.now().toString(),
       error: true,
-      errorMessage: error.message,
       timestamp: new Date().toISOString()
     });
   }

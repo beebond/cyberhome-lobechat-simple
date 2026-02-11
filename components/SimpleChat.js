@@ -1,4 +1,4 @@
-// components/SimpleChat.js - 完整修复版（已集成FAQ知识库）
+// components/SimpleChat.js - 完整修复版（已集成FAQ知识库后端版）
 import { useState, useRef, useEffect } from 'react';
 
 export default function SimpleChat() {
@@ -26,31 +26,7 @@ export default function SimpleChat() {
     setLoading(true);
 
     try {
-      console.log('🔍 正在查询FAQ知识库...');
-      
-      // ========= 第一步：先查 FAQ 知识库 =========
-      const faqResponse = await fetch('https://cyberhome-faq-api-production.up.railway.app/api/faq/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: input,
-        }),
-      });
-
-      const faqData = await faqResponse.json();
-      console.log('FAQ查询结果:', faqData);
-
-      // 如果有高置信度的匹配答案
-      if (faqData.hasExactMatch && faqData.suggestedAnswer) {
-        setMessages([...newMessages, `📚 AI: ${faqData.suggestedAnswer}`]);
-        setLoading(false);
-        return;  // 直接返回，不再调用 OpenAI
-      }
-
-      // ========= 第二步：没有FAQ匹配，调用原有的 /api/chat =========
-      console.log('❌ 未找到FAQ匹配，调用OpenAI...');
+      console.log('📤 发送消息:', input);
       
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -63,23 +39,23 @@ export default function SimpleChat() {
         }),
       });
 
-      console.log('收到响应:', response.status);
+      console.log('📥 收到响应状态:', response.status);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log('响应数据:', data);
+      console.log('📦 响应数据:', data);
       
-      if (data.error) {
-        setMessages([...newMessages, `AI: ${data.response}`]);
+      // 根据来源显示不同样式
+      if (data.fromFaq) {
+        setMessages([...newMessages, `📚 AI: ${data.response}`]);
       } else {
         setMessages([...newMessages, `AI: ${data.response}`]);
       }
-      
     } catch (error) {
-      console.error('API 调用错误:', error);
+      console.error('❌ API 调用错误:', error);
       setMessages([...newMessages, `AI: 抱歉，服务暂时不可用。错误: ${error.message}`]);
     } finally {
       setLoading(false);
@@ -103,26 +79,30 @@ export default function SimpleChat() {
         display: 'flex',
         flexDirection: 'column'
       }}>
-        {messages.map((msg, i) => (
-          <div 
-            key={i} 
-            style={{ 
-              marginBottom: 12, 
-              padding: '12px 16px', 
-              borderRadius: '12px',
-              maxWidth: '85%',
-              alignSelf: msg.startsWith('你:') ? 'flex-end' : 'flex-start',
-              background: msg.startsWith('你:') ? '#1890ff' : 
-                         msg.includes('📚') ? '#e6f7e6' : 'white',
-              color: msg.startsWith('你:') ? 'white' : 
-                     msg.includes('📚') ? '#2c7a2c' : '#333',
-              border: msg.includes('📚') ? '1px solid #95de64' : 'none',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-            }}
-          >
-            {msg}
-          </div>
-        ))}
+        {messages.map((msg, i) => {
+          const isUser = msg.startsWith('你:');
+          const isFaq = msg.includes('📚');
+          
+          return (
+            <div 
+              key={i} 
+              style={{ 
+                marginBottom: 12, 
+                padding: '12px 16px', 
+                borderRadius: '12px',
+                maxWidth: '85%',
+                alignSelf: isUser ? 'flex-end' : 'flex-start',
+                background: isUser ? '#1890ff' : (isFaq ? '#e6f7e6' : 'white'),
+                color: isUser ? 'white' : (isFaq ? '#2c7a2c' : '#333'),
+                border: isFaq ? '1px solid #95de64' : 'none',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                wordBreak: 'break-word'
+              }}
+            >
+              {msg}
+            </div>
+          );
+        })}
         
         {loading && (
           <div style={{ 
@@ -132,7 +112,8 @@ export default function SimpleChat() {
             borderRadius: '12px',
             alignSelf: 'flex-start',
             color: '#666',
-            fontStyle: 'italic'
+            fontStyle: 'italic',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
           }}>
             AI: 正在思考中...
           </div>
@@ -172,11 +153,11 @@ export default function SimpleChat() {
             disabled={loading || !input.trim()}
             style={{ 
               padding: '12px 24px', 
-              background: loading ? '#ccc' : (input.trim() ? '#1890ff' : '#ccc'),
+              background: loading || !input.trim() ? '#ccc' : '#1890ff',
               color: 'white', 
               border: 'none',
               borderRadius: '24px',
-              cursor: (loading || !input.trim()) ? 'not-allowed' : 'pointer',
+              cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
               fontWeight: 'bold',
               fontSize: '16px',
               transition: 'background 0.3s'
@@ -189,9 +170,13 @@ export default function SimpleChat() {
           marginTop: 8, 
           fontSize: '12px', 
           color: '#999',
-          textAlign: 'center'
+          textAlign: 'center',
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '16px'
         }}>
-          按 Enter 发送，Shift + Enter 换行 | 📚 绿色回答来自知识库
+          <span>按 Enter 发送，Shift + Enter 换行</span>
+          <span style={{ color: '#52c41a' }}>📚 绿色回答来自知识库</span>
         </div>
       </div>
     </div>
