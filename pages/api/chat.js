@@ -15,11 +15,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // === 第一步：先查 FAQ 知识库（私有网络直连）===
+    // === 第一步：先查 FAQ 知识库（使用公网域名）===
     try {
       console.log('🔍 正在查询FAQ知识库...');
       
-      const faqResponse = await fetch('https://cyberhome-faq-api-production.up.railway.internal/api/faq/search', {
+      const faqResponse = await fetch('https://cyberhome-faq-api-production.up.railway.app/api/faq/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message })
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     // === 第二步：没有FAQ匹配，调用 OpenAI ===
     console.log('🤖 未匹配FAQ，调用OpenAI...');
 
-    // 诊断环境变量（保留你的诊断代码）
+    // 诊断环境变量
     console.log('=== 开始环境变量诊断 ===');
     console.log('1. 当前时间:', new Date().toISOString());
     console.log('2. NODE_ENV:', process.env.NODE_ENV);
@@ -62,7 +62,7 @@ export default async function handler(req, res) {
       apiKey: process.env.OPENAI_API_KEY,
     });
 
-    // 系统提示词（保持不变）
+    // 系统提示词
     const systemPrompt = `你是CYBERHOME的专业电子产品导购助手，请用中文回答。
 你的职责：
 1. 根据用户需求推荐合适的产品
