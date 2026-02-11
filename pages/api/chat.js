@@ -1,8 +1,7 @@
-// pages/api/chat.js - OpenAI 集成版本（已集成FAQ知识库）
+// pages/api/chat.js - 兼容两种FAQ API返回格式
 import OpenAI from 'openai';
 
 export default async function handler(req, res) {
-  // 只接受 POST 请求
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -10,12 +9,11 @@ export default async function handler(req, res) {
   try {
     const { message, sessionId } = req.body;
 
-    // 验证输入
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ error: 'Message is required' });
     }
 
-    // === 第一步：先查 FAQ 知识库（使用公网域名）===
+    // === 第一步：先查 FAQ 知识库 ===
     try {
       console.log('🔍 正在查询FAQ知识库...');
       
@@ -26,22 +24,34 @@ export default async function handler(req, res) {
       });
 
       const faqData = await faqResponse.json();
+      
+      // 🔧 兼容两种API返回格式
+      let answer = null;
+      let score = 0;
+      
+      // 格式1: 新版本 - 有 suggestedAnswer
+      if (faqData.suggestedAnswer && faqData.hasExactMatch) {
+        answer = faqData.suggestedAnswer;
+        score = 15; // 默认高分
+        console.log('✅ 检测到新版本API格式');
+      }
+      // 格式2: 老版本 - results 数组
+      else if (faqData.results && faqData.results.length > 0) {
+        answer = faqData.results[0].answer;
+        score = faqData.results[0].score || 0;
+        console.log('✅ 检测到老版本API格式');
+      }
+      
       console.log('📚 FAQ查询结果:', {
-        totalResults: faqData.totalResults,
-        hasExactMatch: faqData.hasExactMatch,
-        firstScore: faqData.results?.[0]?.score
+        hasAnswer: !!answer,
+        score: score
       });
 
-      // ✅ 修复：使用分数判断，而不是 hasExactMatch
-      // 阈值设为15，只有高置信度的匹配才返回FAQ答案
-      if (faqData.totalResults > 0 && 
-          faqData.results && 
-          faqData.results[0] && 
-          faqData.results[0].score > 15) {
-        
+      // 如果找到答案且分数足够高
+      if (answer && score > 10) {
         console.log('✅ 命中FAQ知识库，直接返回答案');
         return res.status(200).json({
-          response: faqData.results[0].answer,
+          response: answer,
           fromFaq: true,
           sessionId: sessionId || Date.now().toString(),
           timestamp: new Date().toISOString(),
@@ -51,11 +61,10 @@ export default async function handler(req, res) {
         console.log('⏭️ FAQ匹配分数过低或无匹配，继续调用OpenAI');
       }
     } catch (faqError) {
-      // FAQ 服务不可用时不中断流程，继续调用 OpenAI
       console.error('⚠️ FAQ 知识库查询失败:', faqError.message);
     }
 
-    // === 第二步：没有FAQ匹配或匹配分数过低，调用 OpenAI ===
+    // === 第二步：没有FAQ匹配，调用 OpenAI ===
     console.log('🤖 未匹配FAQ，调用OpenAI...');
 
     // 诊断环境变量
