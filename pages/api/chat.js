@@ -27,27 +27,35 @@ export default async function handler(req, res) {
 
       const faqData = await faqResponse.json();
       console.log('📚 FAQ查询结果:', {
+        totalResults: faqData.totalResults,
         hasExactMatch: faqData.hasExactMatch,
-        resultCount: faqData.totalResults
+        firstScore: faqData.results?.[0]?.score
       });
 
-      // 如果有高置信度的匹配答案（score > 15）
-      if (faqData.hasExactMatch && faqData.suggestedAnswer) {
+      // ✅ 修复：使用分数判断，而不是 hasExactMatch
+      // 阈值设为15，只有高置信度的匹配才返回FAQ答案
+      if (faqData.totalResults > 0 && 
+          faqData.results && 
+          faqData.results[0] && 
+          faqData.results[0].score > 15) {
+        
         console.log('✅ 命中FAQ知识库，直接返回答案');
         return res.status(200).json({
-          response: faqData.suggestedAnswer,
+          response: faqData.results[0].answer,
           fromFaq: true,
           sessionId: sessionId || Date.now().toString(),
           timestamp: new Date().toISOString(),
           source: 'knowledge_base'
         });
+      } else {
+        console.log('⏭️ FAQ匹配分数过低或无匹配，继续调用OpenAI');
       }
     } catch (faqError) {
       // FAQ 服务不可用时不中断流程，继续调用 OpenAI
       console.error('⚠️ FAQ 知识库查询失败:', faqError.message);
     }
 
-    // === 第二步：没有FAQ匹配，调用 OpenAI ===
+    // === 第二步：没有FAQ匹配或匹配分数过低，调用 OpenAI ===
     console.log('🤖 未匹配FAQ，调用OpenAI...');
 
     // 诊断环境变量
