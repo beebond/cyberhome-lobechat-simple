@@ -3,13 +3,9 @@ const nextConfig = {
   // 启用 React 严格模式
   reactStrictMode: true,
   
-  // 关键配置：明确声明运行时环境变量
-  // 这些变量将在服务器端运行时通过 process.env 访问
-  env: {
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-    ACCESS_CODE: process.env.ACCESS_CODE,
-    // 注意：不要包含 NODE_ENV、PORT 等 Next.js 内置变量
-  },
+  // ❌ 重要：删除整个 env 配置块
+  // 不要在这里声明任何环境变量
+  // Railway 会在运行时自动注入环境变量，无需手动配置
   
   // 构建时忽略 ESLint 错误
   eslint: {
@@ -26,10 +22,17 @@ const nextConfig = {
     unoptimized: true,
   },
   
-  // 重要：已移除 output: 'standalone' 配置
-  // 原配置：output: 'standalone' - 这会与 Railway 环境变量注入冲突
+  // ✅ 关键：启用 standalone 输出模式
+  // 这确保 API 路由被正确打包
+  output: 'standalone',
   
-  // 可选：自定义 Webpack 配置（如有需要）
+  // 可选：实验性功能
+  experimental: {
+    // 确保输出文件追踪正确
+    outputFileTracingRoot: __dirname,
+  },
+  
+  // 可选：自定义 Webpack 配置（如无特殊需要，保持注释）
   // webpack: (config, { isServer }) => {
   //   if (!isServer) {
   //     // 客户端特定配置
