@@ -1,4 +1,4 @@
-// components/SimpleChat.js - 完整修复版
+// components/SimpleChat.js - 完整修复版（已集成FAQ知识库）
 import { useState, useRef, useEffect } from 'react';
 
 export default function SimpleChat() {
@@ -26,7 +26,31 @@ export default function SimpleChat() {
     setLoading(true);
 
     try {
-      console.log('发送请求到 /api/chat');
+      console.log('🔍 正在查询FAQ知识库...');
+      
+      // ========= 第一步：先查 FAQ 知识库 =========
+      const faqResponse = await fetch('https://cyberhome-faq-api-production.up.railway.app/api/faq/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: input,
+        }),
+      });
+
+      const faqData = await faqResponse.json();
+      console.log('FAQ查询结果:', faqData);
+
+      // 如果有高置信度的匹配答案
+      if (faqData.hasExactMatch && faqData.suggestedAnswer) {
+        setMessages([...newMessages, `📚 AI: ${faqData.suggestedAnswer}`]);
+        setLoading(false);
+        return;  // 直接返回，不再调用 OpenAI
+      }
+
+      // ========= 第二步：没有FAQ匹配，调用原有的 /api/chat =========
+      console.log('❌ 未找到FAQ匹配，调用OpenAI...');
       
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -53,6 +77,7 @@ export default function SimpleChat() {
       } else {
         setMessages([...newMessages, `AI: ${data.response}`]);
       }
+      
     } catch (error) {
       console.error('API 调用错误:', error);
       setMessages([...newMessages, `AI: 抱歉，服务暂时不可用。错误: ${error.message}`]);
@@ -84,12 +109,14 @@ export default function SimpleChat() {
             style={{ 
               marginBottom: 12, 
               padding: '12px 16px', 
-              background: 'white', 
               borderRadius: '12px',
               maxWidth: '85%',
               alignSelf: msg.startsWith('你:') ? 'flex-end' : 'flex-start',
-              background: msg.startsWith('你:') ? '#1890ff' : 'white',
-              color: msg.startsWith('你:') ? 'white' : '#333',
+              background: msg.startsWith('你:') ? '#1890ff' : 
+                         msg.includes('📚') ? '#e6f7e6' : 'white',
+              color: msg.startsWith('你:') ? 'white' : 
+                     msg.includes('📚') ? '#2c7a2c' : '#333',
+              border: msg.includes('📚') ? '1px solid #95de64' : 'none',
               boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
             }}
           >
@@ -164,7 +191,7 @@ export default function SimpleChat() {
           color: '#999',
           textAlign: 'center'
         }}>
-          按 Enter 发送，Shift + Enter 换行
+          按 Enter 发送，Shift + Enter 换行 | 📚 绿色回答来自知识库
         </div>
       </div>
     </div>
