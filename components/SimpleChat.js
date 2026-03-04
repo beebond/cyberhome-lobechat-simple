@@ -1,4 +1,4 @@
-// components/SimpleChat.js - 修复语法错误
+// components/SimpleChat.js - 完整修复版（可调节窗口、纯净界面）
 import { useState, useRef, useEffect } from 'react';
 
 // 消息类型常量
@@ -161,10 +161,9 @@ export default function SimpleChat() {
       background: 'white',
       borderRadius: '12px',
       overflow: 'hidden',
-      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
     }}>
-      {/* 头部 - 简洁版 */}
+      {/* 头部 */}
       <div style={{
         padding: '12px 16px',
         background: '#1a1a1a',
