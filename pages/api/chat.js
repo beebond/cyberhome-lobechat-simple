@@ -1,8 +1,24 @@
-// pages/api/chat.js - 集成知识库统一搜索API（支持图片和按钮）
+// pages/api/chat.js - 修复FAQ优先匹配
 import OpenAI from 'openai';
 
 // 店铺域名
 const STORE_URL = 'https://www.cyberhome.app';
+
+// 本地FAQ白名单（用于优先匹配）
+const FAQ_KEYWORDS = [
+  // 退货相关
+  { keywords: ['return', 'refund', 'send back', '30 days', '退货', '退款'], category: 'return' },
+  // 保修相关
+  { keywords: ['warranty', 'repair', 'broken', 'damage', '保修', '维修', '坏了', '损坏'], category: 'warranty' },
+  // 配送相关
+  { keywords: ['shipping', 'delivery', 'ship', 'arrive', '运费', '配送', '发货', '到达'], category: 'shipping' },
+  // 联系客服
+  { keywords: ['contact', 'support', '客服', '联系', '帮助'], category: 'contact' },
+  // 关于我们
+  { keywords: ['about us', 'company', '品牌', '关于'], category: 'about' },
+  // 电压认证
+  { keywords: ['voltage', 'certification', '安全认证', '电压'], category: 'voltage' }
+];
 
 // 检测语言函数
 function detectLanguage(text) {
@@ -23,6 +39,12 @@ function formatProductList(products, userQuery, language) {
         ? `${STORE_URL}/products/${p.handle}`
         : `${STORE_URL}/search?q=${p.product_id}`;
       
+      // 处理图片URL
+      let imageUrl = p.image_url || '';
+      if (imageUrl && !imageUrl.startsWith('http')) {
+        imageUrl = `https:${imageUrl}`;
+      }
+      
       // 卡片样式容器
       reply += `<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 12px; background: white;">\n`;
       
@@ -30,17 +52,19 @@ function formatProductList(products, userQuery, language) {
       reply += `<div style="display: flex; align-items: center; margin-bottom: 10px;">\n`;
       
       // 产品图片
-      if (p.image_url) {
-        const imageUrl = p.image_url.startsWith('http') ? p.image_url : `https:${p.image_url}`;
-        reply += `<img src="${imageUrl}" width="60" height="60" style="border-radius: 8px; margin-right: 15px; object-fit: cover;" />\n`;
+      if (imageUrl) {
+        reply += `<img src="${imageUrl}" width="60" height="60" style="border-radius: 8px; margin-right: 15px; object-fit: cover; border: 1px solid #eee;" onerror="this.src='https://via.placeholder.com/60x60?text=Bear'" />\n`;
+      } else {
+        reply += `<div style="width: 60px; height: 60px; border-radius: 8px; margin-right: 15px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #999;">📦</div>\n`;
       }
       
       // 标题和价格
       reply += `<div style="flex: 1;">\n`;
-      reply += `<strong style="font-size: 16px;">${index + 1}. ${p.title}</strong>\n`;
+      reply += `<strong style="font-size: 16px;">${index + 1}. ${p.title || 'Bear Product'}</strong>\n`;
       if (p.price) reply += `<br/><span style="color: #f97316; font-weight: bold;">💰 $${p.price}</span>\n`;
+      reply += `<br/><span style="color: #666; font-size: 12px;">型号: ${p.product_id || 'N/A'}</span>\n`;
       reply += `</div>\n`;
-      reply += `</div>\n`; // 结束图片和标题行
+      reply += `</div>\n`;
       
       // 简短描述
       let cleanDesc = p.description_short
@@ -52,10 +76,10 @@ function formatProductList(products, userQuery, language) {
       // 按钮组
       reply += `<div style="display: flex; gap: 10px; margin-top: 10px;">\n`;
       reply += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">🔗 查看详情</a>\n`;
-      reply += `<span style="display: inline-block; padding: 8px 16px; background-color: #f3f4f6; color: #374151; border-radius: 6px; font-size: 14px;">📦 型号: ${p.product_id}</span>\n`;
+      reply += `<span style="display: inline-block; padding: 8px 16px; background-color: #f3f4f6; color: #374151; border-radius: 6px; font-size: 14px;">📦 ${p.product_id}</span>\n`;
       reply += `</div>\n`;
       
-      reply += `</div>\n\n`; // 结束卡片
+      reply += `</div>\n\n`;
     });
     
     reply += `<p style="margin-top: 10px; color: #6b7280; font-style: italic;">💡 点击"查看详情"按钮查看完整信息，或回复型号获取更多参数。</p>`;
@@ -69,18 +93,25 @@ function formatProductList(products, userQuery, language) {
         ? `${STORE_URL}/products/${p.handle}`
         : `${STORE_URL}/search?q=${p.product_id}`;
       
+      let imageUrl = p.image_url || '';
+      if (imageUrl && !imageUrl.startsWith('http')) {
+        imageUrl = `https:${imageUrl}`;
+      }
+      
       reply += `<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 12px; background: white;">\n`;
       
       reply += `<div style="display: flex; align-items: center; margin-bottom: 10px;">\n`;
       
-      if (p.image_url) {
-        const imageUrl = p.image_url.startsWith('http') ? p.image_url : `https:${p.image_url}`;
-        reply += `<img src="${imageUrl}" width="60" height="60" style="border-radius: 8px; margin-right: 15px; object-fit: cover;" />\n`;
+      if (imageUrl) {
+        reply += `<img src="${imageUrl}" width="60" height="60" style="border-radius: 8px; margin-right: 15px; object-fit: cover; border: 1px solid #eee;" onerror="this.src='https://via.placeholder.com/60x60?text=Bear'" />\n`;
+      } else {
+        reply += `<div style="width: 60px; height: 60px; border-radius: 8px; margin-right: 15px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; color: #999;">📦</div>\n`;
       }
       
       reply += `<div style="flex: 1;">\n`;
-      reply += `<strong style="font-size: 16px;">${index + 1}. ${p.title}</strong>\n`;
+      reply += `<strong style="font-size: 16px;">${index + 1}. ${p.title || 'Bear Product'}</strong>\n`;
       if (p.price) reply += `<br/><span style="color: #f97316; font-weight: bold;">💰 $${p.price}</span>\n`;
+      reply += `<br/><span style="color: #666; font-size: 12px;">Model: ${p.product_id || 'N/A'}</span>\n`;
       reply += `</div>\n`;
       reply += `</div>\n`;
       
@@ -92,19 +123,19 @@ function formatProductList(products, userQuery, language) {
       
       reply += `<div style="display: flex; gap: 10px; margin-top: 10px;">\n`;
       reply += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">🔗 View Details</a>\n`;
-      reply += `<span style="display: inline-block; padding: 8px 16px; background-color: #f3f4f6; color: #374151; border-radius: 6px; font-size: 14px;">📦 Model: ${p.product_id}</span>\n`;
+      reply += `<span style="display: inline-block; padding: 8px 16px; background-color: #f3f4f6; color: #374151; border-radius: 6px; font-size: 14px;">📦 ${p.product_id}</span>\n`;
       reply += `</div>\n`;
       
       reply += `</div>\n\n`;
     });
     
-    reply += `<p style="margin-top: 10px; color: #6b7280; font-style: italic;">💡 Click "View Details" button for more info, or reply with model number.</p>`;
+    reply += `<p style="margin-top: 10px; color: #6b7280; font-style: italic;">💡 Click "View Details" for more info, or reply with model number.</p>`;
   }
   
   return reply;
 }
 
-// 格式化产品详情回复（带图片和按钮）
+// 格式化产品详情回复
 function formatProductDetail(product, descriptions, language) {
   let reply = '';
   
@@ -113,21 +144,21 @@ function formatProductDetail(product, descriptions, language) {
       ? `${STORE_URL}/products/${product.handle}`
       : `${STORE_URL}/search?q=${product.product_id}`;
     
-    // 主卡片
-    reply += `<div style="padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background: white;">\n`;
+    let imageUrl = product.image_url || '';
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      imageUrl = `https:${imageUrl}`;
+    }
     
-    // 主图
-    if (product.image_url) {
-      const imageUrl = product.image_url.startsWith('http') ? product.image_url : `https:${product.image_url}`;
+    reply += `<div style="padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background: white; max-width: 100%;">\n`;
+    
+    if (imageUrl) {
       reply += `<div style="text-align: center; margin-bottom: 20px;">\n`;
-      reply += `<img src="${imageUrl}" width="200" height="200" style="border-radius: 12px; max-width: 100%; object-fit: contain;" />\n`;
+      reply += `<img src="${imageUrl}" width="200" height="200" style="border-radius: 12px; max-width: 100%; object-fit: contain;" onerror="this.src='https://via.placeholder.com/200x200?text=Bear'" />\n`;
       reply += `</div>\n`;
     }
     
-    // 标题
     reply += `<h2 style="margin: 0 0 10px 0; font-size: 20px;">${product.title}</h2>\n`;
     
-    // 产品信息表格
     reply += `<table style="width: 100%; border-collapse: collapse; margin: 15px 0;">\n`;
     reply += `<tr><td style="padding: 8px; background-color: #f9fafb; font-weight: bold;">📦 型号</td><td style="padding: 8px;">${product.product_id}</td></tr>\n`;
     reply += `<tr><td style="padding: 8px; background-color: #f9fafb; font-weight: bold;">💰 价格</td><td style="padding: 8px; color: #f97316; font-weight: bold;">$${product.price}</td></tr>\n`;
@@ -138,63 +169,37 @@ function formatProductDetail(product, descriptions, language) {
     }
     reply += `</table>\n`;
     
-    // 产品描述
     if (product.description_short) {
       let cleanDesc = product.description_short
         .replace(/<[^>]*>/g, '')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>');
+        .replace(/&amp;/g, '&');
       reply += `<div style="margin: 15px 0;">\n`;
       reply += `<h3 style="margin: 0 0 8px 0; font-size: 16px;">📝 产品描述</h3>\n`;
       reply += `<p style="color: #4b5563;">${cleanDesc}</p>\n`;
       reply += `</div>\n`;
     }
     
-    // 详细功能
-    if (descriptions && descriptions.length > 0) {
-      reply += `<div style="margin: 15px 0;">\n`;
-      reply += `<h3 style="margin: 0 0 8px 0; font-size: 16px;">✨ 主要功能</h3>\n`;
-      reply += `<ul style="color: #4b5563; padding-left: 20px;">\n`;
-      let featureCount = 0;
-      descriptions.forEach(desc => {
-        if (featureCount >= 5) return;
-        let cleanText = desc.chunk_text
-          .replace(/<[^>]*>/g, '')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .trim();
-        
-        if (cleanText.length > 20 && !cleanText.includes('http') && !cleanText.includes('https')) {
-          cleanText = cleanText.replace(/^[•●\-]\s*/, '');
-          reply += `<li>${cleanText}</li>\n`;
-          featureCount++;
-        }
-      });
-      reply += `</ul>\n`;
-      reply += `</div>\n`;
-    }
-    
-    // 按钮
     reply += `<div style="margin-top: 20px; text-align: center;">\n`;
     reply += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 12px 24px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 8px; font-size: 16px;">🛒 查看商品页</a>\n`;
     reply += `</div>\n`;
     
-    reply += `</div>\n`; // 结束主卡片
+    reply += `</div>\n`;
     
   } else {
-    // 英文版
     const productUrl = product.handle 
       ? `${STORE_URL}/products/${product.handle}`
       : `${STORE_URL}/search?q=${product.product_id}`;
     
-    reply += `<div style="padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background: white;">\n`;
+    let imageUrl = product.image_url || '';
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      imageUrl = `https:${imageUrl}`;
+    }
     
-    if (product.image_url) {
-      const imageUrl = product.image_url.startsWith('http') ? product.image_url : `https:${product.image_url}`;
+    reply += `<div style="padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background: white; max-width: 100%;">\n`;
+    
+    if (imageUrl) {
       reply += `<div style="text-align: center; margin-bottom: 20px;">\n`;
-      reply += `<img src="${imageUrl}" width="200" height="200" style="border-radius: 12px; max-width: 100%; object-fit: contain;" />\n`;
+      reply += `<img src="${imageUrl}" width="200" height="200" style="border-radius: 12px; max-width: 100%; object-fit: contain;" onerror="this.src='https://via.placeholder.com/200x200?text=Bear'" />\n`;
       reply += `</div>\n`;
     }
     
@@ -213,36 +218,10 @@ function formatProductDetail(product, descriptions, language) {
     if (product.description_short) {
       let cleanDesc = product.description_short
         .replace(/<[^>]*>/g, '')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>');
+        .replace(/&amp;/g, '&');
       reply += `<div style="margin: 15px 0;">\n`;
       reply += `<h3 style="margin: 0 0 8px 0; font-size: 16px;">📝 Description</h3>\n`;
       reply += `<p style="color: #4b5563;">${cleanDesc}</p>\n`;
-      reply += `</div>\n`;
-    }
-    
-    if (descriptions && descriptions.length > 0) {
-      reply += `<div style="margin: 15px 0;">\n`;
-      reply += `<h3 style="margin: 0 0 8px 0; font-size: 16px;">✨ Key Features</h3>\n`;
-      reply += `<ul style="color: #4b5563; padding-left: 20px;">\n`;
-      let featureCount = 0;
-      descriptions.forEach(desc => {
-        if (featureCount >= 5) return;
-        let cleanText = desc.chunk_text
-          .replace(/<[^>]*>/g, '')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .trim();
-        
-        if (cleanText.length > 20 && !cleanText.includes('http') && !cleanText.includes('https')) {
-          cleanText = cleanText.replace(/^[•●\-]\s*/, '');
-          reply += `<li>${cleanText}</li>\n`;
-          featureCount++;
-        }
-      });
-      reply += `</ul>\n`;
       reply += `</div>\n`;
     }
     
@@ -256,40 +235,13 @@ function formatProductDetail(product, descriptions, language) {
   return reply;
 }
 
-// 格式化知识库回复（主函数）
-function formatKnowledgeReply(data, userQuery) {
-  const language = detectLanguage(userQuery);
-  const { faq = [], products = [] } = data.results || {};
-  
-  // 优先显示产品
-  if (products && products.length > 0) {
-    return formatProductList(products, userQuery, language);
+// 格式化FAQ回复
+function formatFAQReply(faq, language) {
+  if (language === 'zh') {
+    return `📚 **常见问题解答**\n\n**Q: ${faq.question}**\n\nA: ${faq.answer}`;
+  } else {
+    return `📚 **Frequently Asked Question**\n\n**Q: ${faq.question}**\n\nA: ${faq.answer}`;
   }
-  
-  // 显示FAQ
-  if (faq && faq.length > 0) {
-    if (language === 'zh') {
-      let reply = `📚 **常见问题解答**：\n\n`;
-      faq.slice(0, 2).forEach((f, index) => {
-        reply += `<div style="margin-bottom: 15px; padding: 10px; background-color: #f9fafb; border-radius: 8px;">\n`;
-        reply += `<strong>Q${index + 1}: ${f.question}</strong>\n`;
-        reply += `<p style="margin: 8px 0 0 0; color: #4b5563;">${f.answer}</p>\n`;
-        reply += `</div>\n`;
-      });
-      return reply;
-    } else {
-      let reply = `📚 **Frequently Asked Questions**:\n\n`;
-      faq.slice(0, 2).forEach((f, index) => {
-        reply += `<div style="margin-bottom: 15px; padding: 10px; background-color: #f9fafb; border-radius: 8px;">\n`;
-        reply += `<strong>Q${index + 1}: ${f.question}</strong>\n`;
-        reply += `<p style="margin: 8px 0 0 0; color: #4b5563;">${f.answer}</p>\n`;
-        reply += `</div>\n`;
-      });
-      return reply;
-    }
-  }
-  
-  return '';
 }
 
 export default async function handler(req, res) {
@@ -305,10 +257,54 @@ export default async function handler(req, res) {
     }
 
     const userLanguage = detectLanguage(message);
+    const lowerMsg = message.toLowerCase();
+    
     console.log('🔤 用户语言:', userLanguage);
     console.log('🔍 用户问题:', message);
 
-    // === 检查是否是型号查询 ===
+    // === 第一步：检查是否是FAQ类问题（优先级最高）===
+    const matchedFaqCategory = FAQ_KEYWORDS.find(category => 
+      category.keywords.some(keyword => lowerMsg.includes(keyword.toLowerCase()))
+    );
+
+    if (matchedFaqCategory) {
+      console.log('📚 检测到FAQ类别:', matchedFaqCategory.category);
+      
+      try {
+        // 调用FAQ搜索API，限制只返回FAQ
+        const faqResponse = await fetch('https://cyberhome-faq-api-production.up.railway.app/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            message, 
+            type: 'faq'  // 指定只搜索FAQ
+          })
+        });
+
+        if (faqResponse.ok) {
+          const faqData = await faqResponse.json();
+          
+          if (faqData.success && faqData.faqMatches && faqData.faqMatches.length > 0) {
+            const faq = faqData.faqMatches[0];
+            console.log('✅ 找到FAQ匹配:', faq.question);
+            
+            return res.status(200).json({
+              response: formatFAQReply(faq, userLanguage),
+              fromFaq: true,
+              sessionId: sessionId || Date.now().toString(),
+              timestamp: new Date().toISOString(),
+              source: 'knowledge_base',
+              type: 'faq',
+              category: matchedFaqCategory.category
+            });
+          }
+        }
+      } catch (faqError) {
+        console.error('FAQ查询失败:', faqError.message);
+      }
+    }
+
+    // === 第二步：检查是否是型号查询 ===
     const modelPattern = /^[A-Z0-9-]+$/i;
     const possibleModel = message.trim().toUpperCase();
     
@@ -346,48 +342,41 @@ export default async function handler(req, res) {
       }
     }
 
-    // === 调用统一搜索 API ===
+    // === 第三步：调用统一搜索API（产品搜索）===
+    // 注意：这里只对非FAQ类问题进行产品搜索
     try {
-      console.log('🔍 正在查询知识库...');
+      console.log('🔍 正在查询产品知识库...');
       
       const knowledgeResponse = await fetch('https://cyberhome-faq-api-production.up.railway.app/api/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, type: 'all' })
+        body: JSON.stringify({ 
+          message, 
+          type: 'product'  // 指定只搜索产品
+        })
       });
 
       const knowledgeData = await knowledgeResponse.json();
       console.log('📊 知识库返回:', {
         success: knowledgeData.success,
-        hasResults: knowledgeData.hasResults,
-        faqCount: knowledgeData.faqMatches?.length || 0,
         productCount: knowledgeData.productMatches?.length || 0
       });
 
-      if (knowledgeData.success && knowledgeData.hasResults) {
-        const formattedData = {
-          results: {
-            faq: knowledgeData.faqMatches || [],
-            products: knowledgeData.productMatches || []
+      if (knowledgeData.success && knowledgeData.productMatches && knowledgeData.productMatches.length > 0) {
+        const formattedReply = formatProductList(knowledgeData.productMatches, message, userLanguage);
+        
+        console.log('✅ 使用产品知识库回复');
+        return res.status(200).json({
+          response: formattedReply,
+          fromFaq: true,
+          sessionId: sessionId || Date.now().toString(),
+          timestamp: new Date().toISOString(),
+          source: 'knowledge_base',
+          type: 'product_list',
+          details: {
+            productCount: knowledgeData.productMatches.length
           }
-        };
-        
-        const formattedReply = formatKnowledgeReply(formattedData, message);
-        
-        if (formattedReply) {
-          console.log('✅ 使用知识库回复');
-          return res.status(200).json({
-            response: formattedReply,
-            fromFaq: true,
-            sessionId: sessionId || Date.now().toString(),
-            timestamp: new Date().toISOString(),
-            source: 'knowledge_base',
-            details: {
-              faqCount: knowledgeData.faqMatches?.length || 0,
-              productCount: knowledgeData.productMatches?.length || 0
-            }
-          });
-        }
+        });
       }
       
       console.log('⏭️ 知识库无匹配，调用OpenAI');
@@ -396,7 +385,7 @@ export default async function handler(req, res) {
       console.error('⚠️ 知识库查询失败:', knowledgeError.message);
     }
 
-    // === 调用 OpenAI ===
+    // === 第四步：调用 OpenAI ===
     console.log('🤖 调用OpenAI...');
 
     const openai = new OpenAI({
