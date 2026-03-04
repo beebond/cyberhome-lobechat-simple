@@ -1,4 +1,4 @@
-// components/SimpleChat.js - 纯净版聊天组件（无背景，适合嵌入网店）
+// components/SimpleChat.js - 修复语法错误
 import { useState, useRef, useEffect } from 'react';
 
 // 消息类型常量
@@ -352,4 +352,54 @@ export default function SimpleChat() {
             style={{
               flex: 1,
               border: 'none',
-             
+              background: 'transparent',
+              padding: '8px 0',
+              fontSize: '14px',
+              outline: 'none'
+            }}
+            disabled={loading}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={loading || !input.trim()}
+            style={{
+              background: loading || !input.trim() ? '#ccc' : '#1890ff',
+              border: 'none',
+              borderRadius: '50%',
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
+              color: 'white',
+              fontSize: '16px'
+            }}
+          >
+            ↑
+          </button>
+        </div>
+        <div style={{
+          marginTop: '6px',
+          fontSize: '10px',
+          color: '#999',
+          textAlign: 'center',
+          display: 'flex',
+          justifyContent: 'center',
+          gap: '12px'
+        }}>
+          <span>Enter to send</span>
+          <span style={{ color: '#52c41a' }}>📚 Knowledge Base</span>
+          <span style={{ color: '#f97316' }}>🔍 Model Search</span>
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 0.3; }
+          50% { opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+}
