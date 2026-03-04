@@ -1,4 +1,4 @@
-// pages/api/chat.js - 集成知识库统一搜索API
+// pages/api/chat.js - 集成知识库统一搜索API（优化版）
 import OpenAI from 'openai';
 
 // 检测语言函数
@@ -14,46 +14,92 @@ function formatKnowledgeReply(data, userQuery) {
   
   let reply = '';
   
-  // 1. 如果有产品（优先显示产品）
+  // 判断用户是否在问FAQ类问题
+  const faqKeywords = language === 'zh' 
+    ? ['退货', '保修', '政策', '运费', '付款', '联系', '客服', '售后', '发票', '退款']
+    : ['return', 'warranty', 'policy', 'shipping', 'payment', 'contact', 'support', 'refund', 'service'];
+  
+  const isFaqQuery = faqKeywords.some(keyword => 
+    userQuery.toLowerCase().includes(keyword.toLowerCase())
+  );
+  
+  // 判断用户是否在问产品类问题
+  const productKeywords = language === 'zh'
+    ? ['空气炸锅', '炸锅', '辅食机', '消毒器', '奶瓶', '温奶器', '榨汁机', '电水壶', '产品']
+    : ['air fryer', 'fryer', 'baby food', 'sterilizer', 'bottle', 'warmer', 'juicer', 'kettle', 'product'];
+  
+  const isProductQuery = productKeywords.some(keyword => 
+    userQuery.toLowerCase().includes(keyword.toLowerCase())
+  );
+  
+  console.log('查询类型:', { isFaqQuery, isProductQuery, hasProducts: products.length > 0 });
+  
+  // 1. 优先处理产品查询
   if (products && products.length > 0) {
-    if (language === 'zh') {
-      reply += `我为您找到以下相关产品：\n\n`;
-      products.forEach((p, index) => {
-        reply += `${index + 1}. **${p.title}**`;
-        if (p.price) reply += ` - $${p.price}`;
-        reply += `\n   ${p.description_short?.substring(0, 100)}...\n\n`;
-      });
-      
-      // 如果用户询问型号
-      if (userQuery.toLowerCase().includes('model') || userQuery.includes('型号')) {
-        reply += `产品型号：\n`;
-        products.forEach(p => {
-          reply += `- ${p.product_id}\n`;
+    
+    // 如果是空气炸锅相关查询，特别处理
+    if (userQuery.toLowerCase().includes('air fryer') || userQuery.includes('空气炸锅')) {
+      if (language === 'zh') {
+        reply = `我为您找到以下空气炸锅产品：\n\n`;
+        products.forEach((p, index) => {
+          reply += `${index + 1}. **${p.title}**`;
+          if (p.price) reply += ` - $${p.price}`;
+          reply += `\n   ${p.description_short?.substring(0, 120)}...\n\n`;
         });
-      }
-      
-      reply += `\n💡 您对哪款产品感兴趣？我可以为您提供更多详细信息。`;
-    } else {
-      reply += `I found these products for you:\n\n`;
-      products.forEach((p, index) => {
-        reply += `${index + 1}. **${p.title}**`;
-        if (p.price) reply += ` - $${p.price}`;
-        reply += `\n   ${p.description_short?.substring(0, 100)}...\n\n`;
-      });
-      
-      if (userQuery.toLowerCase().includes('model')) {
-        reply += `Model numbers:\n`;
-        products.forEach(p => {
-          reply += `- ${p.product_id}\n`;
+        reply += `💡 您对哪款感兴趣？回复型号（如 ${products[0]?.product_id}）我可以提供更多参数和对比。`;
+      } else {
+        reply = `I found these air fryers for you:\n\n`;
+        products.forEach((p, index) => {
+          reply += `${index + 1}. **${p.title}**`;
+          if (p.price) reply += ` - $${p.price}`;
+          reply += `\n   ${p.description_short?.substring(0, 120)}...\n\n`;
         });
+        reply += `💡 Which one interests you? Reply with the model number (e.g., ${products[0]?.product_id}) for more details.`;
       }
-      
-      reply += `\n💡 Which product interests you? I can provide more details.`;
+      return reply;
+    }
+    
+    // 如果是普通产品查询（不是FAQ）
+    if (!isFaqQuery || isProductQuery) {
+      if (language === 'zh') {
+        reply = `我为您找到以下相关产品：\n\n`;
+        products.forEach((p, index) => {
+          reply += `${index + 1}. **${p.title}**`;
+          if (p.price) reply += ` - $${p.price}`;
+          reply += `\n   ${p.description_short?.substring(0, 120)}...\n\n`;
+        });
+        
+        if (userQuery.toLowerCase().includes('model') || userQuery.includes('型号')) {
+          reply += `产品型号：\n`;
+          products.forEach(p => {
+            reply += `- ${p.product_id}\n`;
+          });
+        } else {
+          reply += `💡 您对哪款产品感兴趣？回复型号（如 ${products[0]?.product_id}）我可以提供更多详细信息。`;
+        }
+      } else {
+        reply = `I found these products for you:\n\n`;
+        products.forEach((p, index) => {
+          reply += `${index + 1}. **${p.title}**`;
+          if (p.price) reply += ` - $${p.price}`;
+          reply += `\n   ${p.description_short?.substring(0, 120)}...\n\n`;
+        });
+        
+        if (userQuery.toLowerCase().includes('model')) {
+          reply += `Model numbers:\n`;
+          products.forEach(p => {
+            reply += `- ${p.product_id}\n`;
+          });
+        } else {
+          reply += `💡 Which product interests you? Reply with the model number (e.g., ${products[0]?.product_id}) for more details.`;
+        }
+      }
+      return reply;
     }
   }
   
-  // 2. 如果没有产品，但有FAQ
-  else if (faq && faq.length > 0) {
+  // 2. 处理FAQ查询（只有明确问FAQ且没有产品时）
+  if (faq && faq.length > 0 && isFaqQuery && products.length === 0) {
     if (language === 'zh') {
       reply += `📚 常见问题解答：\n\n`;
       faq.slice(0, 2).forEach((f, index) => {
@@ -65,6 +111,7 @@ function formatKnowledgeReply(data, userQuery) {
         reply += `Q${index + 1}: ${f.question}\nA: ${f.answer}\n\n`;
       });
     }
+    return reply;
   }
   
   return reply;
@@ -107,24 +154,16 @@ export default async function handler(req, res) {
 
       // 如果有结果，格式化返回
       if (knowledgeData.success && knowledgeData.hasResults) {
-        // 我们的统一搜索API已经返回了友好的 reply
-        if (knowledgeData.reply) {
-          console.log('✅ 使用知识库回复');
-          return res.status(200).json({
-            response: knowledgeData.reply,
-            fromFaq: true,
-            sessionId: sessionId || Date.now().toString(),
-            timestamp: new Date().toISOString(),
-            source: 'knowledge_base',
-            details: {
-              faqCount: knowledgeData.faqMatches?.length || 0,
-              productCount: knowledgeData.productMatches?.length || 0
-            }
-          });
-        }
+        // 构造一个兼容的数据结构
+        const formattedData = {
+          results: {
+            faq: knowledgeData.faqMatches || [],
+            products: knowledgeData.productMatches || []
+          }
+        };
         
-        // 如果没有 reply，自己格式化
-        const formattedReply = formatKnowledgeReply(knowledgeData, message);
+        const formattedReply = formatKnowledgeReply(formattedData, message);
+        
         if (formattedReply) {
           console.log('✅ 使用格式化的知识库回复');
           return res.status(200).json({
