@@ -1,4 +1,4 @@
-// pages/api/chat.js - 集成知识库统一搜索API（支持图片和链接）
+// pages/api/chat.js - 集成知识库统一搜索API（支持图片和链接，修复版）
 import OpenAI from 'openai';
 
 // 店铺域名
@@ -10,7 +10,7 @@ function detectLanguage(text) {
   return chineseRegex.test(text) ? 'zh' : 'en';
 }
 
-// 格式化产品列表回复（带图片和链接）
+// 格式化产品列表回复（带图片和链接，修复版）
 function formatProductList(products, userQuery, language) {
   let reply = '';
   
@@ -18,72 +18,111 @@ function formatProductList(products, userQuery, language) {
     reply = `我为您找到以下产品：\n\n`;
     
     products.slice(0, 3).forEach((p, index) => {
-      // 产品图片（缩小尺寸显示）
+      // 使用HTML img标签显示图片
       if (p.image_url) {
-        // 尝试获取高清图，如果失败就用原图
-        const imageUrl = p.image_url.replace(/\.(jpg|jpeg|png|gif|webp)/i, '_300x300.$1');
-        reply += `<img src="${imageUrl}" width="80" height="80" style="border-radius: 8px; margin-right: 10px;" />\n`;
+        // 确保图片URL是完整的
+        const imageUrl = p.image_url.startsWith('http') ? p.image_url : `https:${p.image_url}`;
+        reply += `<div style="display: flex; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">\n`;
+        reply += `<img src="${imageUrl}" width="70" height="70" style="border-radius: 8px; margin-right: 15px; object-fit: cover;" />\n`;
+        reply += `<div style="flex: 1;">\n`;
+      } else {
+        reply += `<div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">\n`;
       }
+      
+      // 构建产品链接 - 使用handle
+      const productUrl = p.handle 
+        ? `${STORE_URL}/products/${p.handle}`
+        : `${STORE_URL}/products?model=${p.product_id}`;
       
       // 产品标题和链接
-      const productUrl = `${STORE_URL}/products/${p.handle}`;
-      reply += `### [${index + 1}. ${p.title}](${productUrl})\n`;
+      reply += `### ${index + 1}. [${p.title}](${productUrl})\n`;
       
       // 价格
-      if (p.price) reply += `💰 **价格：$${p.price}**\n`;
+      if (p.price) reply += `💰 **价格: $${p.price}**  \n`;
       
-      // 简短描述
+      // 清理描述中的HTML标签
+      let cleanDesc = '';
       if (p.description_short) {
-        const desc = p.description_short.replace(/<[^>]*>/g, '').substring(0, 120);
-        reply += `📝 ${desc}...\n`;
+        cleanDesc = p.description_short
+          .replace(/<[^>]*>/g, '')  // 移除HTML标签
+          .replace(/&amp;/g, '&')    // 修复&amp;
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .substring(0, 150);
+      }
+      if (cleanDesc) {
+        reply += `${cleanDesc}...  \n`;
       }
       
-      // 型号提示
-      reply += `🔗 [查看详情](${productUrl}) | 📦 型号：\`${p.product_id}\`\n\n`;
+      // 操作链接
+      reply += `🔗 [查看详情](${productUrl}) | 📦 型号: \`${p.product_id}\`\n`;
+      reply += `</div></div>\n\n`;
     });
     
-    reply += `💡 **回复型号**（如 \`${products[0]?.product_id}\`）查看完整参数和图片，或告诉我您关心的具体功能。`;
+    reply += `\n💡 **回复型号**（如 \`${products[0]?.product_id}\`）查看完整参数和图片。`;
     
   } else {
+    // 英文版
     reply = `I found these products for you:\n\n`;
     
     products.slice(0, 3).forEach((p, index) => {
       if (p.image_url) {
-        const imageUrl = p.image_url.replace(/\.(jpg|jpeg|png|gif|webp)/i, '_300x300.$1');
-        reply += `<img src="${imageUrl}" width="80" height="80" style="border-radius: 8px; margin-right: 10px;" />\n`;
+        const imageUrl = p.image_url.startsWith('http') ? p.image_url : `https:${p.image_url}`;
+        reply += `<div style="display: flex; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">\n`;
+        reply += `<img src="${imageUrl}" width="70" height="70" style="border-radius: 8px; margin-right: 15px; object-fit: cover;" />\n`;
+        reply += `<div style="flex: 1;">\n`;
+      } else {
+        reply += `<div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">\n`;
       }
       
-      const productUrl = `${STORE_URL}/products/${p.handle}`;
-      reply += `### [${index + 1}. ${p.title}](${productUrl})\n`;
+      const productUrl = p.handle 
+        ? `${STORE_URL}/products/${p.handle}`
+        : `${STORE_URL}/products?model=${p.product_id}`;
       
-      if (p.price) reply += `💰 **Price: $${p.price}**\n`;
+      reply += `### ${index + 1}. [${p.title}](${productUrl})\n`;
       
+      if (p.price) reply += `💰 **Price: $${p.price}**  \n`;
+      
+      let cleanDesc = '';
       if (p.description_short) {
-        const desc = p.description_short.replace(/<[^>]*>/g, '').substring(0, 120);
-        reply += `📝 ${desc}...\n`;
+        cleanDesc = p.description_short
+          .replace(/<[^>]*>/g, '')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .substring(0, 150);
+      }
+      if (cleanDesc) {
+        reply += `${cleanDesc}...  \n`;
       }
       
-      reply += `🔗 [View Details](${productUrl}) | 📦 Model: \`${p.product_id}\`\n\n`;
+      reply += `🔗 [View Details](${productUrl}) | 📦 Model: \`${p.product_id}\`\n`;
+      reply += `</div></div>\n\n`;
     });
     
-    reply += `💡 **Reply with model number** (e.g., \`${products[0]?.product_id}\`) for full specs and images.`;
+    reply += `\n💡 **Reply with model number** (e.g., \`${products[0]?.product_id}\`) for full specs and images.`;
   }
   
   return reply;
 }
 
-// 格式化产品详情回复（带图片和链接）
+// 格式化产品详情回复（带图片和链接，修复版）
 function formatProductDetail(product, descriptions, language) {
   let reply = '';
   
   if (language === 'zh') {
     // 主图
     if (product.image_url) {
-      const mainImage = product.image_url.replace(/\.(jpg|jpeg|png|gif|webp)/i, '_600x600.$1');
-      reply += `<img src="${mainImage}" width="300" height="300" style="border-radius: 12px; margin-bottom: 15px;" />\n\n`;
+      const imageUrl = product.image_url.startsWith('http') ? product.image_url : `https:${product.image_url}`;
+      reply += `<div style="text-align: center; margin-bottom: 20px;">\n`;
+      reply += `<img src="${imageUrl}" width="300" height="300" style="border-radius: 12px; max-width: 100%; object-fit: contain;" />\n`;
+      reply += `</div>\n\n`;
     }
     
-    const productUrl = `${STORE_URL}/products/${product.handle}`;
+    const productUrl = product.handle 
+      ? `${STORE_URL}/products/${product.handle}`
+      : `${STORE_URL}/products?model=${product.product_id}`;
+    
     reply += `## [${product.title}](${productUrl})\n\n`;
     
     // 产品信息表格
@@ -91,7 +130,7 @@ function formatProductDetail(product, descriptions, language) {
     reply += `|------|------|\n`;
     reply += `| 📦 **型号** | \`${product.product_id}\` |\n`;
     reply += `| 💰 **价格** | **$${product.price}** |\n`;
-    reply += `| 🏷️ **品牌** | ${product.vendor} |\n`;
+    reply += `| 🏷️ **品牌** | ${product.vendor || 'Bear'} |\n`;
     if (product.stock_status) {
       const stockText = product.stock_status === 'in_stock' ? '✅ 有货' : '⚠️ 需查询';
       reply += `| 📦 **库存** | ${stockText} |\n`;
@@ -100,62 +139,69 @@ function formatProductDetail(product, descriptions, language) {
     
     // 简短描述
     if (product.description_short) {
-      const cleanDesc = product.description_short.replace(/<[^>]*>/g, '');
+      let cleanDesc = product.description_short
+        .replace(/<[^>]*>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
       reply += `### 📝 产品描述\n${cleanDesc}\n\n`;
     }
     
     // 详细功能（从描述片段中提取）
     if (descriptions && descriptions.length > 0) {
       reply += `### ✨ 主要功能\n`;
-      descriptions.slice(0, 5).forEach((desc, i) => {
-        const cleanText = desc.chunk_text.replace(/<[^>]*>/g, '').trim();
-        if (cleanText.length > 20) {
+      let featureCount = 0;
+      descriptions.forEach(desc => {
+        if (featureCount >= 5) return;
+        let cleanText = desc.chunk_text
+          .replace(/<[^>]*>/g, '')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .trim();
+        
+        // 过滤掉太短的和包含URL的文本
+        if (cleanText.length > 20 && !cleanText.includes('http') && !cleanText.includes('https')) {
+          // 移除列表标记
+          cleanText = cleanText.replace(/^[•●\-]\s*/, '');
           reply += `- ${cleanText}\n`;
+          featureCount++;
         }
       });
       reply += '\n';
     }
     
-    // 多张图片（如果有）
-    const productImages = descriptions
-      .filter(d => d.image_url && d.image_url !== product.image_url)
-      .map(d => d.image_url)
-      .slice(0, 3);
-    
-    if (productImages.length > 0) {
-      reply += `### 🖼️ 产品图片\n`;
-      productImages.forEach(imgUrl => {
-        const thumbUrl = imgUrl.replace(/\.(jpg|jpeg|png|gif|webp)/i, '_100x100.$1');
-        reply += `<img src="${thumbUrl}" width="80" height="80" style="border-radius: 6px; margin-right: 8px;" /> `;
-      });
-      reply += '\n\n';
-    }
-    
-    // 购买按钮和链接
-    reply += `🔗 [**👉 查看商品页**](${productUrl})\n\n`;
+    // 购买按钮
+    reply += `---\n`;
+    reply += `👉 **[点击查看商品页](${productUrl})** 获取更多信息\n\n`;
     
     // 后续问题建议
     reply += `💡 **还想了解什么？** 例如：\n`;
     reply += `- 容量和尺寸\n`;
     reply += `- 是否支持自动清洗\n`;
     reply += `- 和同系列其他产品的区别\n`;
-    reply += `- 用户评价如何`;
+    reply += `- 用户评价如何\n`;
     
   } else {
     // 英文版
     if (product.image_url) {
-      const mainImage = product.image_url.replace(/\.(jpg|jpeg|png|gif|webp)/i, '_600x600.$1');
-      reply += `<img src="${mainImage}" width="300" height="300" style="border-radius: 12px; margin-bottom: 15px;" />\n\n`;
+      const imageUrl = product.image_url.startsWith('http') ? product.image_url : `https:${product.image_url}`;
+      reply += `<div style="text-align: center; margin-bottom: 20px;">\n`;
+      reply += `<img src="${imageUrl}" width="300" height="300" style="border-radius: 12px; max-width: 100%; object-fit: contain;" />\n`;
+      reply += `</div>\n\n`;
     }
     
-    const productUrl = `${STORE_URL}/products/${product.handle}`;
+    const productUrl = product.handle 
+      ? `${STORE_URL}/products/${product.handle}`
+      : `${STORE_URL}/products?model=${product.product_id}`;
+    
     reply += `## [${product.title}](${productUrl})\n\n`;
     
     reply += `| Attribute | Info |\n`;
     reply += `|------|------|\n`;
     reply += `| 📦 **Model** | \`${product.product_id}\` |\n`;
     reply += `| 💰 **Price** | **$${product.price}** |\n`;
-    reply += `| 🏷️ **Brand** | ${product.vendor} |\n`;
+    reply += `| 🏷️ **Brand** | ${product.vendor || 'Bear'} |\n`;
     if (product.stock_status) {
       const stockText = product.stock_status === 'in_stock' ? '✅ In Stock' : '⚠️ Check Availability';
       reply += `| 📦 **Stock** | ${stockText} |\n`;
@@ -163,42 +209,43 @@ function formatProductDetail(product, descriptions, language) {
     reply += `\n`;
     
     if (product.description_short) {
-      const cleanDesc = product.description_short.replace(/<[^>]*>/g, '');
+      let cleanDesc = product.description_short
+        .replace(/<[^>]*>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>');
       reply += `### 📝 Description\n${cleanDesc}\n\n`;
     }
     
     if (descriptions && descriptions.length > 0) {
       reply += `### ✨ Key Features\n`;
-      descriptions.slice(0, 5).forEach((desc, i) => {
-        const cleanText = desc.chunk_text.replace(/<[^>]*>/g, '').trim();
-        if (cleanText.length > 20) {
+      let featureCount = 0;
+      descriptions.forEach(desc => {
+        if (featureCount >= 5) return;
+        let cleanText = desc.chunk_text
+          .replace(/<[^>]*>/g, '')
+          .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .trim();
+        
+        if (cleanText.length > 20 && !cleanText.includes('http') && !cleanText.includes('https')) {
+          cleanText = cleanText.replace(/^[•●\-]\s*/, '');
           reply += `- ${cleanText}\n`;
+          featureCount++;
         }
       });
       reply += '\n';
     }
     
-    const productImages = descriptions
-      .filter(d => d.image_url && d.image_url !== product.image_url)
-      .map(d => d.image_url)
-      .slice(0, 3);
-    
-    if (productImages.length > 0) {
-      reply += `### 🖼️ Gallery\n`;
-      productImages.forEach(imgUrl => {
-        const thumbUrl = imgUrl.replace(/\.(jpg|jpeg|png|gif|webp)/i, '_100x100.$1');
-        reply += `<img src="${thumbUrl}" width="80" height="80" style="border-radius: 6px; margin-right: 8px;" /> `;
-      });
-      reply += '\n\n';
-    }
-    
-    reply += `🔗 [**👉 View Product Page**](${productUrl})\n\n`;
+    reply += `---\n`;
+    reply += `👉 **[View Product Page](${productUrl})** for more info\n\n`;
     
     reply += `💡 **What else?** Ask me about:\n`;
     reply += `- Capacity & dimensions\n`;
     reply += `- Self-clean function\n`;
     reply += `- Compare with other models\n`;
-    reply += `- Customer reviews`;
+    reply += `- Customer reviews\n`;
   }
   
   return reply;
@@ -219,14 +266,14 @@ function formatKnowledgeReply(data, userQuery) {
     if (language === 'zh') {
       let reply = `📚 **常见问题解答**：\n\n`;
       faq.slice(0, 2).forEach((f, index) => {
-        reply += `**Q${index + 1}: ${f.question}**\n`;
+        reply += `**Q${index + 1}: ${f.question}**  \n`;
         reply += `${f.answer}\n\n`;
       });
       return reply;
     } else {
       let reply = `📚 **Frequently Asked Questions**:\n\n`;
       faq.slice(0, 2).forEach((f, index) => {
-        reply += `**Q${index + 1}: ${f.question}**\n`;
+        reply += `**Q${index + 1}: ${f.question}**  \n`;
         reply += `${f.answer}\n\n`;
       });
       return reply;
