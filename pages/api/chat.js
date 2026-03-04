@@ -1,4 +1,4 @@
-// pages/api/chat.js - 集成知识库统一搜索API（支持图片和链接，修复版）
+// pages/api/chat.js - 集成知识库统一搜索API（支持图片和按钮）
 import OpenAI from 'openai';
 
 // 店铺域名
@@ -10,7 +10,7 @@ function detectLanguage(text) {
   return chineseRegex.test(text) ? 'zh' : 'en';
 }
 
-// 格式化产品列表回复（带图片和链接，修复版）
+// 格式化产品列表回复（带图片和按钮）
 function formatProductList(products, userQuery, language) {
   let reply = '';
   
@@ -18,138 +18,144 @@ function formatProductList(products, userQuery, language) {
     reply = `我为您找到以下产品：\n\n`;
     
     products.slice(0, 3).forEach((p, index) => {
-      // 使用HTML img标签显示图片
-      if (p.image_url) {
-        // 确保图片URL是完整的
-        const imageUrl = p.image_url.startsWith('http') ? p.image_url : `https:${p.image_url}`;
-        reply += `<div style="display: flex; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">\n`;
-        reply += `<img src="${imageUrl}" width="70" height="70" style="border-radius: 8px; margin-right: 15px; object-fit: cover;" />\n`;
-        reply += `<div style="flex: 1;">\n`;
-      } else {
-        reply += `<div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">\n`;
-      }
-      
-      // 构建产品链接 - 使用handle
+      // 构建产品链接
       const productUrl = p.handle 
         ? `${STORE_URL}/products/${p.handle}`
-        : `${STORE_URL}/products?model=${p.product_id}`;
+        : `${STORE_URL}/search?q=${p.product_id}`;
       
-      // 产品标题和链接
-      reply += `### ${index + 1}. [${p.title}](${productUrl})\n`;
+      // 卡片样式容器
+      reply += `<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 12px; background: white;">\n`;
       
-      // 价格
-      if (p.price) reply += `💰 **价格: $${p.price}**  \n`;
+      // 图片和标题行
+      reply += `<div style="display: flex; align-items: center; margin-bottom: 10px;">\n`;
       
-      // 清理描述中的HTML标签
-      let cleanDesc = '';
-      if (p.description_short) {
-        cleanDesc = p.description_short
-          .replace(/<[^>]*>/g, '')  // 移除HTML标签
-          .replace(/&amp;/g, '&')    // 修复&amp;
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .substring(0, 150);
-      }
-      if (cleanDesc) {
-        reply += `${cleanDesc}...  \n`;
+      // 产品图片
+      if (p.image_url) {
+        const imageUrl = p.image_url.startsWith('http') ? p.image_url : `https:${p.image_url}`;
+        reply += `<img src="${imageUrl}" width="60" height="60" style="border-radius: 8px; margin-right: 15px; object-fit: cover;" />\n`;
       }
       
-      // 操作链接
-      reply += `🔗 [查看详情](${productUrl}) | 📦 型号: \`${p.product_id}\`\n`;
-      reply += `</div></div>\n\n`;
+      // 标题和价格
+      reply += `<div style="flex: 1;">\n`;
+      reply += `<strong style="font-size: 16px;">${index + 1}. ${p.title}</strong>\n`;
+      if (p.price) reply += `<br/><span style="color: #f97316; font-weight: bold;">💰 $${p.price}</span>\n`;
+      reply += `</div>\n`;
+      reply += `</div>\n`; // 结束图片和标题行
+      
+      // 简短描述
+      let cleanDesc = p.description_short
+        ?.replace(/<[^>]*>/g, '')
+        .replace(/&amp;/g, '&')
+        .substring(0, 120) || '';
+      if (cleanDesc) reply += `<p style="color: #4b5563; font-size: 14px; margin: 10px 0;">${cleanDesc}...</p>\n`;
+      
+      // 按钮组
+      reply += `<div style="display: flex; gap: 10px; margin-top: 10px;">\n`;
+      reply += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">🔗 查看详情</a>\n`;
+      reply += `<span style="display: inline-block; padding: 8px 16px; background-color: #f3f4f6; color: #374151; border-radius: 6px; font-size: 14px;">📦 型号: ${p.product_id}</span>\n`;
+      reply += `</div>\n`;
+      
+      reply += `</div>\n\n`; // 结束卡片
     });
     
-    reply += `\n💡 **回复型号**（如 \`${products[0]?.product_id}\`）查看完整参数和图片。`;
+    reply += `<p style="margin-top: 10px; color: #6b7280; font-style: italic;">💡 点击"查看详情"按钮查看完整信息，或回复型号获取更多参数。</p>`;
     
   } else {
     // 英文版
     reply = `I found these products for you:\n\n`;
     
     products.slice(0, 3).forEach((p, index) => {
-      if (p.image_url) {
-        const imageUrl = p.image_url.startsWith('http') ? p.image_url : `https:${p.image_url}`;
-        reply += `<div style="display: flex; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">\n`;
-        reply += `<img src="${imageUrl}" width="70" height="70" style="border-radius: 8px; margin-right: 15px; object-fit: cover;" />\n`;
-        reply += `<div style="flex: 1;">\n`;
-      } else {
-        reply += `<div style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">\n`;
-      }
-      
       const productUrl = p.handle 
         ? `${STORE_URL}/products/${p.handle}`
-        : `${STORE_URL}/products?model=${p.product_id}`;
+        : `${STORE_URL}/search?q=${p.product_id}`;
       
-      reply += `### ${index + 1}. [${p.title}](${productUrl})\n`;
+      reply += `<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 12px; background: white;">\n`;
       
-      if (p.price) reply += `💰 **Price: $${p.price}**  \n`;
+      reply += `<div style="display: flex; align-items: center; margin-bottom: 10px;">\n`;
       
-      let cleanDesc = '';
-      if (p.description_short) {
-        cleanDesc = p.description_short
-          .replace(/<[^>]*>/g, '')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .substring(0, 150);
-      }
-      if (cleanDesc) {
-        reply += `${cleanDesc}...  \n`;
+      if (p.image_url) {
+        const imageUrl = p.image_url.startsWith('http') ? p.image_url : `https:${p.image_url}`;
+        reply += `<img src="${imageUrl}" width="60" height="60" style="border-radius: 8px; margin-right: 15px; object-fit: cover;" />\n`;
       }
       
-      reply += `🔗 [View Details](${productUrl}) | 📦 Model: \`${p.product_id}\`\n`;
-      reply += `</div></div>\n\n`;
+      reply += `<div style="flex: 1;">\n`;
+      reply += `<strong style="font-size: 16px;">${index + 1}. ${p.title}</strong>\n`;
+      if (p.price) reply += `<br/><span style="color: #f97316; font-weight: bold;">💰 $${p.price}</span>\n`;
+      reply += `</div>\n`;
+      reply += `</div>\n`;
+      
+      let cleanDesc = p.description_short
+        ?.replace(/<[^>]*>/g, '')
+        .replace(/&amp;/g, '&')
+        .substring(0, 120) || '';
+      if (cleanDesc) reply += `<p style="color: #4b5563; font-size: 14px; margin: 10px 0;">${cleanDesc}...</p>\n`;
+      
+      reply += `<div style="display: flex; gap: 10px; margin-top: 10px;">\n`;
+      reply += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-size: 14px;">🔗 View Details</a>\n`;
+      reply += `<span style="display: inline-block; padding: 8px 16px; background-color: #f3f4f6; color: #374151; border-radius: 6px; font-size: 14px;">📦 Model: ${p.product_id}</span>\n`;
+      reply += `</div>\n`;
+      
+      reply += `</div>\n\n`;
     });
     
-    reply += `\n💡 **Reply with model number** (e.g., \`${products[0]?.product_id}\`) for full specs and images.`;
+    reply += `<p style="margin-top: 10px; color: #6b7280; font-style: italic;">💡 Click "View Details" button for more info, or reply with model number.</p>`;
   }
   
   return reply;
 }
 
-// 格式化产品详情回复（带图片和链接，修复版）
+// 格式化产品详情回复（带图片和按钮）
 function formatProductDetail(product, descriptions, language) {
   let reply = '';
   
   if (language === 'zh') {
+    const productUrl = product.handle 
+      ? `${STORE_URL}/products/${product.handle}`
+      : `${STORE_URL}/search?q=${product.product_id}`;
+    
+    // 主卡片
+    reply += `<div style="padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background: white;">\n`;
+    
     // 主图
     if (product.image_url) {
       const imageUrl = product.image_url.startsWith('http') ? product.image_url : `https:${product.image_url}`;
       reply += `<div style="text-align: center; margin-bottom: 20px;">\n`;
-      reply += `<img src="${imageUrl}" width="300" height="300" style="border-radius: 12px; max-width: 100%; object-fit: contain;" />\n`;
-      reply += `</div>\n\n`;
+      reply += `<img src="${imageUrl}" width="200" height="200" style="border-radius: 12px; max-width: 100%; object-fit: contain;" />\n`;
+      reply += `</div>\n`;
     }
     
-    const productUrl = product.handle 
-      ? `${STORE_URL}/products/${product.handle}`
-      : `${STORE_URL}/products?model=${product.product_id}`;
-    
-    reply += `## [${product.title}](${productUrl})\n\n`;
+    // 标题
+    reply += `<h2 style="margin: 0 0 10px 0; font-size: 20px;">${product.title}</h2>\n`;
     
     // 产品信息表格
-    reply += `| 属性 | 信息 |\n`;
-    reply += `|------|------|\n`;
-    reply += `| 📦 **型号** | \`${product.product_id}\` |\n`;
-    reply += `| 💰 **价格** | **$${product.price}** |\n`;
-    reply += `| 🏷️ **品牌** | ${product.vendor || 'Bear'} |\n`;
+    reply += `<table style="width: 100%; border-collapse: collapse; margin: 15px 0;">\n`;
+    reply += `<tr><td style="padding: 8px; background-color: #f9fafb; font-weight: bold;">📦 型号</td><td style="padding: 8px;">${product.product_id}</td></tr>\n`;
+    reply += `<tr><td style="padding: 8px; background-color: #f9fafb; font-weight: bold;">💰 价格</td><td style="padding: 8px; color: #f97316; font-weight: bold;">$${product.price}</td></tr>\n`;
+    reply += `<tr><td style="padding: 8px; background-color: #f9fafb; font-weight: bold;">🏷️ 品牌</td><td style="padding: 8px;">${product.vendor || 'Bear'}</td></tr>\n`;
     if (product.stock_status) {
       const stockText = product.stock_status === 'in_stock' ? '✅ 有货' : '⚠️ 需查询';
-      reply += `| 📦 **库存** | ${stockText} |\n`;
+      reply += `<tr><td style="padding: 8px; background-color: #f9fafb; font-weight: bold;">📦 库存</td><td style="padding: 8px;">${stockText}</td></tr>\n`;
     }
-    reply += `\n`;
+    reply += `</table>\n`;
     
-    // 简短描述
+    // 产品描述
     if (product.description_short) {
       let cleanDesc = product.description_short
         .replace(/<[^>]*>/g, '')
         .replace(/&amp;/g, '&')
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>');
-      reply += `### 📝 产品描述\n${cleanDesc}\n\n`;
+      reply += `<div style="margin: 15px 0;">\n`;
+      reply += `<h3 style="margin: 0 0 8px 0; font-size: 16px;">📝 产品描述</h3>\n`;
+      reply += `<p style="color: #4b5563;">${cleanDesc}</p>\n`;
+      reply += `</div>\n`;
     }
     
-    // 详细功能（从描述片段中提取）
+    // 详细功能
     if (descriptions && descriptions.length > 0) {
-      reply += `### ✨ 主要功能\n`;
+      reply += `<div style="margin: 15px 0;">\n`;
+      reply += `<h3 style="margin: 0 0 8px 0; font-size: 16px;">✨ 主要功能</h3>\n`;
+      reply += `<ul style="color: #4b5563; padding-left: 20px;">\n`;
       let featureCount = 0;
       descriptions.forEach(desc => {
         if (featureCount >= 5) return;
@@ -160,53 +166,49 @@ function formatProductDetail(product, descriptions, language) {
           .replace(/&gt;/g, '>')
           .trim();
         
-        // 过滤掉太短的和包含URL的文本
         if (cleanText.length > 20 && !cleanText.includes('http') && !cleanText.includes('https')) {
-          // 移除列表标记
           cleanText = cleanText.replace(/^[•●\-]\s*/, '');
-          reply += `- ${cleanText}\n`;
+          reply += `<li>${cleanText}</li>\n`;
           featureCount++;
         }
       });
-      reply += '\n';
+      reply += `</ul>\n`;
+      reply += `</div>\n`;
     }
     
-    // 购买按钮
-    reply += `---\n`;
-    reply += `👉 **[点击查看商品页](${productUrl})** 获取更多信息\n\n`;
+    // 按钮
+    reply += `<div style="margin-top: 20px; text-align: center;">\n`;
+    reply += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 12px 24px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 8px; font-size: 16px;">🛒 查看商品页</a>\n`;
+    reply += `</div>\n`;
     
-    // 后续问题建议
-    reply += `💡 **还想了解什么？** 例如：\n`;
-    reply += `- 容量和尺寸\n`;
-    reply += `- 是否支持自动清洗\n`;
-    reply += `- 和同系列其他产品的区别\n`;
-    reply += `- 用户评价如何\n`;
+    reply += `</div>\n`; // 结束主卡片
     
   } else {
     // 英文版
+    const productUrl = product.handle 
+      ? `${STORE_URL}/products/${product.handle}`
+      : `${STORE_URL}/search?q=${product.product_id}`;
+    
+    reply += `<div style="padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background: white;">\n`;
+    
     if (product.image_url) {
       const imageUrl = product.image_url.startsWith('http') ? product.image_url : `https:${product.image_url}`;
       reply += `<div style="text-align: center; margin-bottom: 20px;">\n`;
-      reply += `<img src="${imageUrl}" width="300" height="300" style="border-radius: 12px; max-width: 100%; object-fit: contain;" />\n`;
-      reply += `</div>\n\n`;
+      reply += `<img src="${imageUrl}" width="200" height="200" style="border-radius: 12px; max-width: 100%; object-fit: contain;" />\n`;
+      reply += `</div>\n`;
     }
     
-    const productUrl = product.handle 
-      ? `${STORE_URL}/products/${product.handle}`
-      : `${STORE_URL}/products?model=${product.product_id}`;
+    reply += `<h2 style="margin: 0 0 10px 0; font-size: 20px;">${product.title}</h2>\n`;
     
-    reply += `## [${product.title}](${productUrl})\n\n`;
-    
-    reply += `| Attribute | Info |\n`;
-    reply += `|------|------|\n`;
-    reply += `| 📦 **Model** | \`${product.product_id}\` |\n`;
-    reply += `| 💰 **Price** | **$${product.price}** |\n`;
-    reply += `| 🏷️ **Brand** | ${product.vendor || 'Bear'} |\n`;
+    reply += `<table style="width: 100%; border-collapse: collapse; margin: 15px 0;">\n`;
+    reply += `<tr><td style="padding: 8px; background-color: #f9fafb; font-weight: bold;">📦 Model</td><td style="padding: 8px;">${product.product_id}</td></tr>\n`;
+    reply += `<tr><td style="padding: 8px; background-color: #f9fafb; font-weight: bold;">💰 Price</td><td style="padding: 8px; color: #f97316; font-weight: bold;">$${product.price}</td></tr>\n`;
+    reply += `<tr><td style="padding: 8px; background-color: #f9fafb; font-weight: bold;">🏷️ Brand</td><td style="padding: 8px;">${product.vendor || 'Bear'}</td></tr>\n`;
     if (product.stock_status) {
       const stockText = product.stock_status === 'in_stock' ? '✅ In Stock' : '⚠️ Check Availability';
-      reply += `| 📦 **Stock** | ${stockText} |\n`;
+      reply += `<tr><td style="padding: 8px; background-color: #f9fafb; font-weight: bold;">📦 Stock</td><td style="padding: 8px;">${stockText}</td></tr>\n`;
     }
-    reply += `\n`;
+    reply += `</table>\n`;
     
     if (product.description_short) {
       let cleanDesc = product.description_short
@@ -214,11 +216,16 @@ function formatProductDetail(product, descriptions, language) {
         .replace(/&amp;/g, '&')
         .replace(/&lt;/g, '<')
         .replace(/&gt;/g, '>');
-      reply += `### 📝 Description\n${cleanDesc}\n\n`;
+      reply += `<div style="margin: 15px 0;">\n`;
+      reply += `<h3 style="margin: 0 0 8px 0; font-size: 16px;">📝 Description</h3>\n`;
+      reply += `<p style="color: #4b5563;">${cleanDesc}</p>\n`;
+      reply += `</div>\n`;
     }
     
     if (descriptions && descriptions.length > 0) {
-      reply += `### ✨ Key Features\n`;
+      reply += `<div style="margin: 15px 0;">\n`;
+      reply += `<h3 style="margin: 0 0 8px 0; font-size: 16px;">✨ Key Features</h3>\n`;
+      reply += `<ul style="color: #4b5563; padding-left: 20px;">\n`;
       let featureCount = 0;
       descriptions.forEach(desc => {
         if (featureCount >= 5) return;
@@ -231,21 +238,19 @@ function formatProductDetail(product, descriptions, language) {
         
         if (cleanText.length > 20 && !cleanText.includes('http') && !cleanText.includes('https')) {
           cleanText = cleanText.replace(/^[•●\-]\s*/, '');
-          reply += `- ${cleanText}\n`;
+          reply += `<li>${cleanText}</li>\n`;
           featureCount++;
         }
       });
-      reply += '\n';
+      reply += `</ul>\n`;
+      reply += `</div>\n`;
     }
     
-    reply += `---\n`;
-    reply += `👉 **[View Product Page](${productUrl})** for more info\n\n`;
+    reply += `<div style="margin-top: 20px; text-align: center;">\n`;
+    reply += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 12px 24px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 8px; font-size: 16px;">🛒 View Product</a>\n`;
+    reply += `</div>\n`;
     
-    reply += `💡 **What else?** Ask me about:\n`;
-    reply += `- Capacity & dimensions\n`;
-    reply += `- Self-clean function\n`;
-    reply += `- Compare with other models\n`;
-    reply += `- Customer reviews\n`;
+    reply += `</div>\n`;
   }
   
   return reply;
@@ -266,15 +271,19 @@ function formatKnowledgeReply(data, userQuery) {
     if (language === 'zh') {
       let reply = `📚 **常见问题解答**：\n\n`;
       faq.slice(0, 2).forEach((f, index) => {
-        reply += `**Q${index + 1}: ${f.question}**  \n`;
-        reply += `${f.answer}\n\n`;
+        reply += `<div style="margin-bottom: 15px; padding: 10px; background-color: #f9fafb; border-radius: 8px;">\n`;
+        reply += `<strong>Q${index + 1}: ${f.question}</strong>\n`;
+        reply += `<p style="margin: 8px 0 0 0; color: #4b5563;">${f.answer}</p>\n`;
+        reply += `</div>\n`;
       });
       return reply;
     } else {
       let reply = `📚 **Frequently Asked Questions**:\n\n`;
       faq.slice(0, 2).forEach((f, index) => {
-        reply += `**Q${index + 1}: ${f.question}**  \n`;
-        reply += `${f.answer}\n\n`;
+        reply += `<div style="margin-bottom: 15px; padding: 10px; background-color: #f9fafb; border-radius: 8px;">\n`;
+        reply += `<strong>Q${index + 1}: ${f.question}</strong>\n`;
+        reply += `<p style="margin: 8px 0 0 0; color: #4b5563;">${f.answer}</p>\n`;
+        reply += `</div>\n`;
       });
       return reply;
     }
