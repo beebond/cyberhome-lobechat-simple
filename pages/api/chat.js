@@ -1,4 +1,4 @@
-// pages/api/chat.js - 集成知识库统一搜索API（优化版）
+// pages/api/chat.js - 集成知识库统一搜索API（支持型号查询）
 import OpenAI from 'openai';
 
 // 检测语言函数
@@ -133,6 +133,69 @@ export default async function handler(req, res) {
     const userLanguage = detectLanguage(message);
     console.log('🔤 用户语言:', userLanguage);
     console.log('🔍 用户问题:', message);
+
+    // === 检查是否是型号查询 ===
+    const modelPattern = /^[A-Z0-9-]+$/i;
+    const possibleModel = message.trim().toUpperCase();
+    
+    if (modelPattern.test(possibleModel) && possibleModel.length > 5) {
+      console.log('🔍 检测到可能的型号查询:', possibleModel);
+      
+      try {
+        // 调用知识库的型号查询接口
+        const modelResponse = await fetch(`https://cyberhome-faq-api-production.up.railway.app/api/product/model/${possibleModel}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (modelResponse.ok) {
+          const modelData = await modelResponse.json();
+          
+          if (modelData.success && modelData.product) {
+            const product = modelData.product;
+            const language = detectLanguage(message);
+            
+            let modelReply = '';
+            if (language === 'zh') {
+              modelReply = `**${product.title}** 详细信息：\n\n`;
+              modelReply += `💰 价格: $${product.price}\n`;
+              modelReply += `🏷️ 品牌: ${product.vendor}\n`;
+              modelReply += `📦 型号: ${product.product_id}\n\n`;
+              modelReply += `📝 产品描述：\n${product.description_short}\n\n`;
+              
+              if (modelData.fullDescription) {
+                modelReply += `✨ 详细功能：\n${modelData.fullDescription.substring(0, 500)}...\n\n`;
+              }
+              
+              modelReply += `💡 您可以在我们的网站查看更多信息，或询问具体功能。`;
+            } else {
+              modelReply = `**${product.title}** Details:\n\n`;
+              modelReply += `💰 Price: $${product.price}\n`;
+              modelReply += `🏷️ Brand: ${product.vendor}\n`;
+              modelReply += `📦 Model: ${product.product_id}\n\n`;
+              modelReply += `📝 Description:\n${product.description_short}\n\n`;
+              
+              if (modelData.fullDescription) {
+                modelReply += `✨ Features:\n${modelData.fullDescription.substring(0, 500)}...\n\n`;
+              }
+              
+              modelReply += `💡 Visit our website for more information or ask about specific features.`;
+            }
+            
+            return res.status(200).json({
+              response: modelReply,
+              fromFaq: true,
+              sessionId: sessionId || Date.now().toString(),
+              timestamp: new Date().toISOString(),
+              source: 'knowledge_base',
+              type: 'model_detail'
+            });
+          }
+        }
+      } catch (modelError) {
+        console.error('型号查询失败:', modelError.message);
+      }
+    }
 
     // === 第一步：调用统一搜索 API（同时查FAQ和产品） ===
     try {
