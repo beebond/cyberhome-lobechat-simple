@@ -1,4 +1,4 @@
-// pages/api/chat.js - 稳定版修复
+// pages/api/chat.js - 确保产品卡片显示
 import OpenAI from 'openai';
 
 const STORE_URL = 'https://www.cyberhome.app';
@@ -7,7 +7,7 @@ const FAQ_API_URL = 'https://cyberhome-faq-api-production.up.railway.app';
 // 会话记忆存储
 const conversationHistory = new Map();
 
-// 格式化产品卡片 - 确保始终返回有效HTML
+// 格式化产品卡片 - 强制返回HTML
 function formatProductCards(products) {
   if (!products || products.length === 0) {
     return '';
@@ -16,19 +16,23 @@ function formatProductCards(products) {
   let cards = '';
   const defaultImage = 'https://placehold.co/80x80/f5f5f5/999999?text=Bear';
   
+  console.log('开始格式化产品卡片，产品数量:', products.length);
+  
   // 限制最多显示3个产品
   const maxProducts = Math.min(products.length, 3);
   
   for (let i = 0; i < maxProducts; i++) {
     const p = products[i];
     
-    // 必须有handle才能构建链接
-    if (!p || !p.handle) {
-      console.warn('跳过无效产品:', p?.product_id);
-      continue;
-    }
+    if (!p) continue;
     
     try {
+      // 必须有handle才能构建链接，如果没有handle则跳过
+      if (!p.handle) {
+        console.warn('产品缺少handle:', p.product_id);
+        continue;
+      }
+      
       const productUrl = `${STORE_URL}/products/${p.handle}`;
       const imageUrl = p.image_url || defaultImage;
       
@@ -38,6 +42,8 @@ function formatProductCards(products) {
         cleanDesc = p.description_short
           .replace(/<[^>]*>/g, '')
           .replace(/&amp;/g, '&')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
           .replace(/\s+/g, ' ')
           .trim();
         
@@ -47,11 +53,16 @@ function formatProductCards(products) {
         }
       }
       
+      // 构建产品卡片HTML
       cards += `<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 12px; background: white; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 100%;">\n`;
+      
+      // 图片行
       cards += `<div style="display: flex; gap: 15px; margin-bottom: 10px;">\n`;
       cards += `<div style="width: 80px; height: 80px; flex-shrink: 0; background: #f8f9fa; border-radius: 8px; overflow: hidden; border: 1px solid #eee;">\n`;
       cards += `<img src="${imageUrl}" alt="${p.title || 'Bear Product'}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null; this.src='${defaultImage}';">\n`;
       cards += `</div>\n`;
+      
+      // 产品信息
       cards += `<div style="flex: 1;">\n`;
       cards += `<div style="font-weight: 600; font-size: 15px; color: #333;">${p.title || 'Bear Product'}</div>\n`;
       cards += `<div style="color: #666; font-size: 12px; margin: 4px 0;">Model: ${p.product_id || 'N/A'}</div>\n`;
@@ -61,21 +72,53 @@ function formatProductCards(products) {
       cards += `</div>\n`;
       cards += `</div>\n`;
       
+      // 描述
       if (cleanDesc) {
         cards += `<div style="color: #4b5563; font-size: 13px; line-height: 1.5; margin: 10px 0;">${cleanDesc}</div>\n`;
       }
       
+      // Buy Now按钮
       cards += `<div style="margin-top: 12px;">\n`;
       cards += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 500;">🔗 Buy Now</a>\n`;
       cards += `</div>\n`;
       cards += `</div>\n`;
+      
+      console.log('已生成产品卡片:', p.product_id);
     } catch (error) {
-      console.error('格式化产品卡片失败:', error.message);
+      console.error('格式化产品卡片失败:', error.message, p);
       continue;
     }
   }
   
+  console.log('卡片生成完成，长度:', cards.length);
   return cards;
+}
+
+// 过滤相关产品 - 只保留真正匹配的产品
+function filterRelevantProducts(products, message) {
+  if (!products || products.length === 0) return [];
+  
+  const lowerMsg = message.toLowerCase();
+  
+  // 酸奶机相关关键词
+  const yogurtKeywords = ['yogurt', 'yaourtière', '酸奶', 'yoghurt'];
+  const isYogurtQuery = yogurtKeywords.some(k => lowerMsg.includes(k));
+  
+  // 如果是酸奶机查询，只返回酸奶机
+  if (isYogurtQuery) {
+    const yogurtProducts = products.filter(p => 
+      p.product_id?.startsWith('SNJ') || 
+      p.title?.toLowerCase().includes('yogurt') ||
+      p.category?.toLowerCase().includes('yogurt')
+    );
+    if (yogurtProducts.length > 0) {
+      console.log('找到酸奶机产品:', yogurtProducts.length);
+      return yogurtProducts;
+    }
+  }
+  
+  // 默认返回所有产品
+  return products;
 }
 
 export default async function handler(req, res) {
@@ -102,45 +145,48 @@ export default async function handler(req, res) {
       lastIntent: 'unknown'
     };
 
-    // === 1. 先用知识库搜索产品（无论意图，先获取数据）===
+    // === 1. 先用知识库搜索产品 ===
     let relevantProducts = [];
     try {
       const searchResponse = await fetch(`${FAQ_API_URL}/api/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message, type: 'product' }),
-        timeout: 5000 // 5秒超时
+        body: JSON.stringify({ message, type: 'product' })
       });
 
       if (searchResponse.ok) {
         const searchData = await searchResponse.json();
-        relevantProducts = searchData.productMatches || [];
-        console.log('📦 搜索到产品数量:', relevantProducts.length);
+        const allProducts = searchData.productMatches || [];
+        console.log('📦 API返回产品总数:', allProducts.length);
+        
+        // 过滤相关产品
+        relevantProducts = filterRelevantProducts(allProducts, message);
+        console.log('🎯 过滤后相关产品:', relevantProducts.length);
+        
+        // 打印产品信息
+        relevantProducts.forEach(p => {
+          console.log(`- ${p.product_id}: ${p.title?.substring(0, 50)}`);
+        });
       }
     } catch (error) {
       console.error('产品搜索失败:', error.message);
-      // 继续执行，不要让搜索失败导致整个请求失败
     }
 
-    // === 2. 让AI理解意图 ===
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
-
-    // 简化意图识别，避免复杂prompt
+    // === 2. 简单意图识别 ===
     const lowerMsg = message.toLowerCase();
     let intent = 'general';
     
-    // 简单规则判断
     if (lowerMsg.includes('hello') || lowerMsg.includes('hi') || lowerMsg.includes('hey')) {
       intent = 'greeting';
     } else if (lowerMsg.includes('shipping') || lowerMsg.includes('delivery') || 
                lowerMsg.includes('return') || lowerMsg.includes('refund') ||
-               lowerMsg.includes('warranty') || lowerMsg.includes('canada')) {
+               lowerMsg.includes('warranty') || lowerMsg.includes('canada') ||
+               lowerMsg.includes('mexico')) {
       intent = 'policy';
     } else if (lowerMsg.includes('buy') || lowerMsg.includes('looking for') ||
                lowerMsg.includes('need') || lowerMsg.includes('want') ||
-               lowerMsg.includes('price') || relevantProducts.length > 0) {
+               lowerMsg.includes('price') || lowerMsg.includes('have') ||
+               relevantProducts.length > 0) {
       intent = 'product';
     }
 
@@ -189,8 +235,12 @@ export default async function handler(req, res) {
     try {
       if (intent === 'product' && relevantProducts.length > 0) {
         // 产品查询且有结果
-        const productNames = relevantProducts.slice(0, 3).map(p => p.title).join(', ');
-        aiResponse = `I found ${relevantProducts.length > 1 ? 'several' : 'a'} product${relevantProducts.length > 1 ? 's' : ''} that might interest you: ${productNames}.`;
+        if (relevantProducts.length === 1) {
+          aiResponse = `I found a product that might interest you: ${relevantProducts[0].title}.`;
+        } else {
+          const productNames = relevantProducts.slice(0, 2).map(p => p.title).join(' and ');
+          aiResponse = `I found several products that might interest you, including ${productNames}.`;
+        }
       } else if (intent === 'product' && relevantProducts.length === 0) {
         // 产品查询但无结果
         aiResponse = `I couldn't find any products matching "${message}". Would you like to try a different search?`;
@@ -199,21 +249,24 @@ export default async function handler(req, res) {
         aiResponse = `Hello! How can I help you with your home appliance needs today?`;
       } else {
         // 通用回复
-        aiResponse = `I understand you're asking about "${message}". How can I assist you further?`;
+        aiResponse = `How can I help you with your home appliance needs today?`;
       }
     } catch (error) {
       console.error('生成回复失败:', error.message);
       aiResponse = `How can I help you with your home appliance needs today?`;
     }
 
-    // === 5. 构建最终回复 ===
+    // === 5. 构建最终回复 - 确保产品卡片被添加 ===
     let finalResponse = aiResponse;
     
     // 只有产品查询且有结果时才显示产品卡片
     if (intent === 'product' && relevantProducts.length > 0) {
       const productCards = formatProductCards(relevantProducts);
-      if (productCards) {
+      if (productCards && productCards.length > 0) {
         finalResponse = aiResponse + '\n\n【Related Products】\n' + productCards;
+        console.log('已添加产品卡片到回复');
+      } else {
+        console.warn('产品卡片生成为空');
       }
     }
 
