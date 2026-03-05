@@ -1,4 +1,4 @@
-// pages/api/chat.js - 完整修复版
+// pages/api/chat.js - 完全基于products.json结构修复
 import OpenAI from 'openai';
 
 const STORE_URL = 'https://www.cyberhome.app';
@@ -7,7 +7,7 @@ const FAQ_API_URL = 'https://cyberhome-faq-api-production.up.railway.app';
 // 会话记忆存储
 const conversationHistory = new Map();
 
-// 政策/售后关键词（优先级最高）
+// 政策/售后关键词
 const POLICY_KEYWORDS = [
   'shipping', 'delivery', 'ship', 'arrive', '多长时间', '多久能到',
   'return', 'refund', 'send back', '退货', '退款',
@@ -31,7 +31,7 @@ const PRODUCT_KEYWORDS = [
   'replacement', 'parts', '配件', '替换', 'jar'
 ];
 
-// 格式化产品卡片 - 只保留View Details
+// 格式化产品卡片 - 基于products.json的实际结构
 function formatProductCards(products) {
   if (!products || products.length === 0) return '';
   
@@ -42,6 +42,8 @@ function formatProductCards(products) {
   
   products.slice(0, 3).forEach((p) => {
     // ✅ 正确：必须使用handle构建产品链接
+    // 从products.json可以看到，handle字段是存在的，例如：
+    // "handle": "bear-yogurt-maker-with-1-bowl-1-0l-stainless-steel-tank-snj-c10h2"
     const productUrl = p.handle 
       ? `${STORE_URL}/products/${p.handle}`
       : `${STORE_URL}/search?q=${p.product_id}`; // 如果没有handle，用搜索页作为备用
@@ -99,7 +101,7 @@ function formatProductCards(products) {
       cards += `<div style="color: #4b5563; font-size: 13px; line-height: 1.5; margin: 10px 0;">${cleanDesc}</div>\n`;
     }
     
-    // Buy Now按钮 - 跳转产品页
+    // Buy Now按钮 - 跳转产品页（使用handle）
     cards += `<div style="margin-top: 12px;">\n`;
     cards += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 500;">🔗 Buy Now</a>\n`;
     cards += `</div>\n`;
@@ -138,11 +140,11 @@ document.getElementById('productRequestForm').addEventListener('submit', async (
   `;
 }
 
-// 判断意图 - 新优先级
+// 判断意图
 function detectIntent(message) {
   const lowerMsg = message.toLowerCase().trim();
   
-  // 1. 政策/售后类（优先级最高）
+  // 1. 政策/售后类
   if (POLICY_KEYWORDS.some(keyword => lowerMsg.includes(keyword))) {
     return 'policy';
   }
@@ -161,12 +163,14 @@ function calculateProductScore(product, message) {
   let score = 0;
   const lowerMsg = message.toLowerCase();
   
-  // 构建搜索文本
+  // 构建搜索文本 - 包含所有可能相关的字段
   const searchText = [
     product.title || '',
     product.description_short || '',
     product.category || '',
     product.product_id || '',
+    product.type || '',
+    product.vendor || '',
     ...(product.tags || [])
   ].join(' ').toLowerCase();
   
@@ -174,22 +178,35 @@ function calculateProductScore(product, message) {
   const keywords = lowerMsg.split(/\s+/).filter(k => k.length > 2);
   
   keywords.forEach(keyword => {
+    // 完全匹配
     if (searchText.includes(keyword)) {
-      score += 2;
+      score += 3;
     }
-    // 检查是否包含部分匹配
-    if (searchText.includes(keyword.substring(0, keyword.length - 2))) {
+    // 部分匹配
+    if (keyword.length > 4 && searchText.includes(keyword.substring(0, keyword.length - 2))) {
       score += 1;
     }
   });
   
-  // 特殊处理replacement jar for yogurt maker
+  // 特殊处理：replacement jar for yogurt maker
   if (lowerMsg.includes('replacement') && lowerMsg.includes('jar') && lowerMsg.includes('yogurt')) {
-    if (product.product_id === 'SNJ-C10T1BK' || product.title?.toLowerCase().includes('yogurt')) {
+    // 检查是否是酸奶机配件
+    if (product.title?.toLowerCase().includes('yogurt') || 
+        product.category?.toLowerCase().includes('yogurt') ||
+        product.product_id?.includes('SNJ')) {
       score += 10;
     }
   }
   
+  // 特殊处理：baby food maker 对比
+  if (lowerMsg.includes('difference between') && lowerMsg.includes('baby food maker')) {
+    if (product.title?.toLowerCase().includes('baby food') || 
+        product.category?.toLowerCase().includes('baby')) {
+      score += 5;
+    }
+  }
+  
+  console.log(`产品 ${product.product_id} 得分: ${score}`);
   return score;
 }
 
@@ -211,56 +228,52 @@ export default async function handler(req, res) {
     const intent = detectIntent(message);
     console.log('🎯 意图:', intent);
 
-    // === 2. 如果是政策类，直接返回FAQ（不调用OpenAI）===
+    // === 2. 政策类问题直接返回FAQ ===
     if (intent === 'policy') {
-      try {
-        const faqResponse = await fetch(`${FAQ_API_URL}/api/search`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, type: 'faq' })
-        });
-
-        if (faqResponse.ok) {
-          const faqData = await faqResponse.json();
-          if (faqData.faqMatches && faqData.faqMatches.length > 0) {
-            return res.status(200).json({
-              response: faqData.faqMatches[0].answer,
-              sessionId: sessionId || Date.now().toString(),
-              timestamp: new Date().toISOString(),
-              source: 'faq',
-              hasProducts: false
-            });
-          }
-        }
-      } catch (error) {
-        console.error('FAQ搜索失败:', error.message);
+      // 政策类问题回复
+      const policyResponses = {
+        shipping: 'Standard shipping takes 5-7 business days within the US. Expedited shipping (2-3 days) is available for an additional fee.',
+        return: 'You can return your order within 30 days of receiving it. Please make sure the item is in its original condition with all tags attached.',
+        warranty: 'Our products come with a 1-year warranty covering manufacturing defects. Please contact our support team with your order number to start a warranty claim.',
+        canada: 'Yes, we currently serve customers in the US and Canada only.',
+        default: 'For questions about shipping, returns, or policies, please visit our website footer or contact support@cyberhome.app'
+      };
+      
+      let response = policyResponses.default;
+      if (message.toLowerCase().includes('shipping') || message.toLowerCase().includes('delivery')) {
+        response = policyResponses.shipping;
+      } else if (message.toLowerCase().includes('return') || message.toLowerCase().includes('refund')) {
+        response = policyResponses.return;
+      } else if (message.toLowerCase().includes('warranty')) {
+        response = policyResponses.warranty;
+      } else if (message.toLowerCase().includes('canada')) {
+        response = policyResponses.canada;
       }
       
-      // 默认政策回复
       return res.status(200).json({
-        response: 'For questions about shipping, returns, or policies, please visit our website footer or contact support@cyberhome.app',
+        response,
         sessionId: sessionId || Date.now().toString(),
         timestamp: new Date().toISOString(),
-        source: 'faq_default',
+        source: 'policy',
         hasProducts: false
       });
     }
 
-    // === 3. 如果是产品查询，搜索产品 ===
+    // === 3. 产品查询 ===
     let relevantProducts = [];
-    let matchedProducts = [];
     
     if (intent === 'product') {
       try {
-        const searchResponse = await fetch(`${FAQ_API_URL}/api/search`, {
+        // 直接调用知识库API获取所有产品
+        const allProductsResponse = await fetch(`${FAQ_API_URL}/api/search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message, type: 'product' })
+          body: JSON.stringify({ message: 'all', type: 'product' })
         });
 
-        if (searchResponse.ok) {
-          const searchData = await searchResponse.json();
-          const allProducts = searchData.productMatches || [];
+        if (allProductsResponse.ok) {
+          const allData = await allProductsResponse.json();
+          const allProducts = allData.productMatches || [];
           
           // 计算分数并排序
           const scored = allProducts.map(p => ({
@@ -268,16 +281,16 @@ export default async function handler(req, res) {
             score: calculateProductScore(p, message)
           }));
           
-          matchedProducts = scored
-            .filter(p => p.score > 0)
-            .sort((a, b) => b.score - a.score);
-          
-          // 只保留分数最高的3个，且分数>0
-          relevantProducts = matchedProducts
-            .filter(p => p.score > 2) // 提高阈值，避免无关产品
+          // 只保留分数最高的3个，且分数>=3
+          relevantProducts = scored
+            .filter(p => p.score >= 3)
+            .sort((a, b) => b.score - a.score)
             .slice(0, 3);
           
-          console.log('📦 相关产品:', relevantProducts.length, '总分:', relevantProducts.map(p => p.score));
+          console.log('📦 相关产品:', relevantProducts.length);
+          if (relevantProducts.length > 0) {
+            console.log('产品列表:', relevantProducts.map(p => ({ id: p.product_id, score: p.score })));
+          }
         }
       } catch (error) {
         console.error('产品搜索失败:', error.message);
@@ -292,24 +305,23 @@ export default async function handler(req, res) {
     // 构建产品上下文
     let productContext = '';
     if (relevantProducts.length > 0) {
-      productContext = '\nRelevant products found:\n';
+      productContext = 'Relevant products we have in stock:\n';
       relevantProducts.forEach(p => {
-        productContext += `- ${p.title} ($${p.price}, score: ${p.score})\n`;
+        productContext += `- ${p.title} (Model: ${p.product_id}, Price: $${p.price})\n`;
       });
     }
 
-    let systemPrompt = `You are a professional shopping assistant for CyberHome.
+    const systemPrompt = `You are a professional shopping assistant for CyberHome.
 
-INTENT: ${intent}
+Current intent: ${intent}
 
 CRITICAL RULES:
-- ONLY mention products if intent is "product" AND relevant products are found
-- If no relevant products found, suggest they leave their email for notification
-- NEVER recommend products for policy/greeting questions
+- ONLY mention products if intent is "product" AND we have relevant products
+- If no relevant products found, politely apologize and offer to notify them when available
 - Keep responses concise and helpful
 - Use the same language as the user
 
-${productContext ? 'Products found: ' + productContext : ''}
+${productContext ? 'Products we have: ' + productContext : ''}
 
 Brand info:
 - Website: ${STORE_URL}

@@ -1,4 +1,4 @@
-// components/SimpleChat.js - 支持会话ID
+// components/SimpleChat.js - 简化显示版
 import { useState, useRef, useEffect } from 'react';
 
 export default function SimpleChat() {
@@ -13,7 +13,6 @@ export default function SimpleChat() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState(() => {
-    // 生成或恢复会话ID
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('chatSessionId');
       if (stored) return stored;
@@ -23,20 +22,19 @@ export default function SimpleChat() {
   
   const messagesEndRef = useRef(null);
 
-  // 保存会话ID
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('chatSessionId', sessionId);
     }
   }, [sessionId]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
@@ -73,7 +71,6 @@ export default function SimpleChat() {
 
       setMessages(prev => [...prev, aiMessage]);
       
-      // 如果服务器返回了新的sessionId，使用它
       if (data.sessionId && data.sessionId !== sessionId) {
         setSessionId(data.sessionId);
       }
