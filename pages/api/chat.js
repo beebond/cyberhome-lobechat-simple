@@ -148,7 +148,16 @@ export default async function handler(req, res) {
       if (searchResponse.ok) {
         const searchData = await searchResponse.json();
         // Only keep products that are actually in stock (production requires stock_status === 'in_stock')
-        relevantProducts = (searchData.productMatches || []).filter(p => (p?.stock_status || '').toLowerCase() === 'in_stock');
+        const normalizeStock = (v) => String(v ?? '')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '');
+
+        relevantProducts = (searchData.productMatches || []).filter(p => {
+          const raw = p?.stock_status ?? p?.stockStatus ?? p?.availability ?? p?.stock ?? p?.status;
+          return normalizeStock(raw) === 'in_stock';
+        });
         // Cap to max 3 product cards
         relevantProducts = relevantProducts.slice(0, 3);
         
