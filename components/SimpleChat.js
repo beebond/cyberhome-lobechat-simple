@@ -1,4 +1,4 @@
-// components/SimpleChat.js - 完整修复版（可调节窗口、纯净界面）
+// components/SimpleChat.js - 支持产品卡片渲染
 import { useState, useRef, useEffect } from 'react';
 
 // 消息类型常量
@@ -97,12 +97,6 @@ export default function SimpleChat() {
 
       if (data.fromFaq) {
         messageType = MESSAGE_TYPES.AI_FAQ;
-        if (data.type === 'model_detail') {
-          metadata.isProductDetail = true;
-        }
-        if (data.details) {
-          metadata.productCount = data.details.productCount;
-        }
       }
 
       const aiMessage = {
@@ -144,8 +138,16 @@ export default function SimpleChat() {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  // 安全渲染HTML
   const renderHTML = (html) => {
-    return { __html: html };
+    // 简单的XSS防护
+    const sanitized = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+    return { __html: sanitized };
+  };
+
+  // 检查消息是否包含HTML
+  const containsHTML = (text) => {
+    return /<[a-z][\s\S]*>/i.test(text);
   };
 
   const getMessageLabel = (type) => {
@@ -203,6 +205,7 @@ export default function SimpleChat() {
         {messages.map((msg) => {
           const isUser = msg.type === MESSAGE_TYPES.USER;
           const avatar = AVATARS[msg.type] || AVATARS[MESSAGE_TYPES.AI_EXTERNAL];
+          const isHTML = containsHTML(msg.content);
           
           return (
             <div
@@ -244,7 +247,7 @@ export default function SimpleChat() {
                     marginLeft: '4px'
                   }}>
                     {getMessageLabel(msg.type)}
-                    {msg.metadata?.productCount && (
+                    {msg.metadata?.hasProducts && (
                       <span style={{ 
                         background: '#e6f7e6', 
                         color: '#2c7a2c', 
@@ -253,29 +256,29 @@ export default function SimpleChat() {
                         fontSize: '10px',
                         marginLeft: '6px'
                       }}>
-                        {msg.metadata.productCount} products
+                        📦 含产品推荐
                       </span>
                     )}
                   </div>
                 )}
 
                 <div style={{
-                  padding: msg.content.includes('<div') ? '0' : '10px 12px',
+                  padding: isHTML ? '0' : '10px 12px',
                   borderRadius: '12px',
                   background: isUser ? '#1890ff' : 'white',
                   color: isUser ? 'white' : '#333',
                   boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
                   wordBreak: 'break-word',
                   fontSize: '14px',
-                  lineHeight: 1.4,
+                  lineHeight: 1.5,
                   borderTopLeftRadius: isUser ? '12px' : '4px',
                   borderTopRightRadius: isUser ? '4px' : '12px',
                   overflow: 'hidden'
                 }}>
-                  {msg.content.includes('<div') ? (
+                  {isHTML ? (
                     <div dangerouslySetInnerHTML={renderHTML(msg.content)} />
                   ) : (
-                    msg.content
+                    <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
                   )}
                 </div>
                 
@@ -382,14 +385,9 @@ export default function SimpleChat() {
           marginTop: '6px',
           fontSize: '10px',
           color: '#999',
-          textAlign: 'center',
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '12px'
+          textAlign: 'center'
         }}>
-          <span>Enter to send</span>
-          <span style={{ color: '#52c41a' }}>📚 Knowledge Base</span>
-          <span style={{ color: '#f97316' }}>🔍 Model Search</span>
+          Enter to send
         </div>
       </div>
 
