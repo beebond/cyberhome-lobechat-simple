@@ -1,4 +1,4 @@
-// pages/index.js - 纯净版，只保留对话框
+// pages/index.js - 可调节窗口版
 import SimpleChat from '../components/SimpleChat';
 
 export default function Home() {

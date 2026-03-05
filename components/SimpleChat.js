@@ -1,4 +1,4 @@
-// components/SimpleChat.js - 支持产品卡片渲染
+// components/SimpleChat.js - 语言同步版
 import { useState, useRef, useEffect } from 'react';
 
 // 消息类型常量
@@ -44,6 +44,7 @@ export default function SimpleChat() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState(Date.now().toString());
+  const [currentLanguage, setCurrentLanguage] = useState('en'); // 默认英文
   
   const messagesEndRef = useRef(null);
 
@@ -56,9 +57,19 @@ export default function SimpleChat() {
     scrollToBottom();
   }, [messages]);
 
+  // 检测语言
+  const detectLanguage = (text) => {
+    const chineseRegex = /[\u4e00-\u9fa5]/;
+    return chineseRegex.test(text) ? 'zh' : 'en';
+  };
+
   // 发送消息
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
+
+    // 检测用户输入的语言
+    const userLang = detectLanguage(input);
+    setCurrentLanguage(userLang);
 
     const userMessage = {
       id: Date.now(),
@@ -92,11 +103,11 @@ export default function SimpleChat() {
       const data = await response.json();
       
       // 根据来源确定消息类型
-      let messageType = MESSAGE_TYPES.AI_EXTERNAL;
-      let metadata = { source: data.source || 'AI' };
-
-      if (data.fromFaq) {
-        messageType = MESSAGE_TYPES.AI_FAQ;
+      let messageType = data.fromFaq ? MESSAGE_TYPES.AI_FAQ : MESSAGE_TYPES.AI_EXTERNAL;
+      
+      // 如果API返回了语言信息，更新当前语言
+      if (data.language) {
+        setCurrentLanguage(data.language);
       }
 
       const aiMessage = {
@@ -104,7 +115,10 @@ export default function SimpleChat() {
         type: messageType,
         content: data.response,
         timestamp: new Date(data.timestamp),
-        metadata: metadata
+        metadata: { 
+          source: data.source,
+          hasProducts: data.hasProducts 
+        }
       };
 
       setMessages(prev => [...prev, aiMessage]);
@@ -115,10 +129,16 @@ export default function SimpleChat() {
 
     } catch (error) {
       console.error('❌ API 调用错误:', error);
+      
+      // 错误信息也根据当前语言显示
+      const errorMsg = currentLanguage === 'zh' 
+        ? '抱歉，服务暂时不可用，请稍后再试。'
+        : 'Sorry, service temporarily unavailable. Please try again.';
+        
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
         type: MESSAGE_TYPES.AI_EXTERNAL,
-        content: `Error: ${error.message}. Please try again.`,
+        content: errorMsg,
         timestamp: new Date(),
         metadata: { error: true }
       }]);
@@ -140,7 +160,6 @@ export default function SimpleChat() {
 
   // 安全渲染HTML
   const renderHTML = (html) => {
-    // 简单的XSS防护
     const sanitized = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
     return { __html: sanitized };
   };
@@ -152,6 +171,16 @@ export default function SimpleChat() {
 
   const getMessageLabel = (type) => {
     return AVATARS[type]?.label || 'AI';
+  };
+
+  // 根据当前语言获取占位符文本
+  const getPlaceholder = () => {
+    return currentLanguage === 'zh' ? '输入消息...' : 'Type your message...';
+  };
+
+  // 根据当前语言获取底部提示
+  const getFooterText = () => {
+    return currentLanguage === 'zh' ? '按 Enter 发送' : 'Enter to send';
   };
 
   return (
@@ -189,6 +218,16 @@ export default function SimpleChat() {
         </div>
         <div style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>
           CyberHome Support
+        </div>
+        {/* 显示当前语言 */}
+        <div style={{
+          fontSize: 11,
+          background: '#333',
+          padding: '2px 6px',
+          borderRadius: 10,
+          color: '#ccc'
+        }}>
+          {currentLanguage === 'zh' ? '中文' : 'EN'}
         </div>
       </div>
 
@@ -256,7 +295,7 @@ export default function SimpleChat() {
                         fontSize: '10px',
                         marginLeft: '6px'
                       }}>
-                        📦 含产品推荐
+                        📦 {currentLanguage === 'zh' ? '含产品推荐' : 'Products'}
                       </span>
                     )}
                   </div>
@@ -350,7 +389,7 @@ export default function SimpleChat() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="Type your message..."
+            placeholder={getPlaceholder()}
             style={{
               flex: 1,
               border: 'none',
@@ -387,7 +426,7 @@ export default function SimpleChat() {
           color: '#999',
           textAlign: 'center'
         }}>
-          Enter to send
+          {getFooterText()}
         </div>
       </div>
 
