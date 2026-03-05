@@ -1,33 +1,18 @@
-// components/SimpleChat.js - 同步更新版
+// components/SimpleChat.js - 显示产品卡片
 import { useState, useRef, useEffect } from 'react';
-
-const MESSAGE_TYPES = {
-  USER: 'user',
-  AI_EXTERNAL: 'ai_external',
-  AI_FAQ: 'ai_faq',
-  HUMAN: 'human'
-};
-
-const AVATARS = {
-  [MESSAGE_TYPES.AI_EXTERNAL]: { icon: '🤖', bgColor: '#f0f0f0', color: '#333', label: 'AI Assistant' },
-  [MESSAGE_TYPES.AI_FAQ]: { icon: '📚', bgColor: '#e6f7e6', color: '#2c7a2c', label: 'Knowledge Base' },
-  [MESSAGE_TYPES.HUMAN]: { icon: '👤', bgColor: '#1890ff', color: 'white', label: 'Support' }
-};
 
 export default function SimpleChat() {
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
-      type: MESSAGE_TYPES.HUMAN,
+      type: 'ai',
       content: 'Welcome to CyberHome Support! How can we help you today?',
-      timestamp: new Date(),
-      metadata: { source: 'Welcome Message' }
+      timestamp: new Date()
     }
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState(Date.now().toString());
-  const [currentLanguage, setCurrentLanguage] = useState('en');
   
   const messagesEndRef = useRef(null);
 
@@ -39,20 +24,12 @@ export default function SimpleChat() {
     scrollToBottom();
   }, [messages]);
 
-  const detectLanguage = (text) => {
-    const chineseRegex = /[\u4e00-\u9fa5]/;
-    return chineseRegex.test(text) ? 'zh' : 'en';
-  };
-
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
 
-    const userLang = detectLanguage(input);
-    setCurrentLanguage(userLang);
-
     const userMessage = {
       id: Date.now(),
-      type: MESSAGE_TYPES.USER,
+      type: 'user',
       content: input,
       timestamp: new Date()
     };
@@ -71,17 +48,13 @@ export default function SimpleChat() {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
       const data = await response.json();
-      
-      const messageType = data.fromFaq ? MESSAGE_TYPES.AI_FAQ : MESSAGE_TYPES.AI_EXTERNAL;
-      
-      if (data.language) setCurrentLanguage(data.language);
 
       const aiMessage = {
         id: Date.now() + 1,
-        type: messageType,
+        type: 'ai',
         content: data.response,
         timestamp: new Date(data.timestamp),
-        metadata: { source: data.source, hasProducts: data.hasProducts }
+        metadata: { hasProducts: data.hasProducts }
       };
 
       setMessages(prev => [...prev, aiMessage]);
@@ -92,14 +65,10 @@ export default function SimpleChat() {
 
     } catch (error) {
       console.error('❌ API 调用错误:', error);
-      const errorMsg = currentLanguage === 'zh' 
-        ? '抱歉，服务暂时不可用，请稍后再试。'
-        : 'Sorry, service temporarily unavailable. Please try again.';
-        
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
-        type: MESSAGE_TYPES.AI_EXTERNAL,
-        content: errorMsg,
+        type: 'ai',
+        content: 'Sorry, service temporarily unavailable. Please try again.',
         timestamp: new Date(),
         metadata: { error: true }
       }]);
@@ -125,10 +94,6 @@ export default function SimpleChat() {
   };
 
   const containsHTML = (text) => /<[a-z][\s\S]*>/i.test(text);
-
-  const getMessageLabel = (type) => AVATARS[type]?.label || 'AI';
-  const getPlaceholder = () => currentLanguage === 'zh' ? '输入消息...' : 'Type your message...';
-  const getFooterText = () => currentLanguage === 'zh' ? '按 Enter 发送' : 'Enter to send';
 
   return (
     <div style={{
@@ -166,15 +131,6 @@ export default function SimpleChat() {
         <div style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>
           CyberHome Support
         </div>
-        <div style={{
-          fontSize: 11,
-          background: '#333',
-          padding: '2px 6px',
-          borderRadius: 10,
-          color: '#ccc'
-        }}>
-          {currentLanguage === 'zh' ? '中文' : 'EN'}
-        </div>
       </div>
 
       {/* 消息区域 */}
@@ -188,8 +144,7 @@ export default function SimpleChat() {
         gap: '12px'
       }}>
         {messages.map((msg) => {
-          const isUser = msg.type === MESSAGE_TYPES.USER;
-          const avatar = AVATARS[msg.type] || AVATARS[MESSAGE_TYPES.AI_EXTERNAL];
+          const isUser = msg.type === 'user';
           const isHTML = containsHTML(msg.content);
           
           return (
@@ -203,15 +158,15 @@ export default function SimpleChat() {
                 width: '28px',
                 height: '28px',
                 borderRadius: '50%',
-                background: avatar.bgColor,
+                background: isUser ? '#1890ff' : '#f0f0f0',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 fontSize: '14px',
-                color: avatar.color,
+                color: isUser ? 'white' : '#333',
                 flexShrink: 0
               }}>
-                {avatar.icon}
+                {isUser ? '👤' : '🤖'}
               </div>
 
               <div style={{
@@ -220,27 +175,22 @@ export default function SimpleChat() {
                 flexDirection: 'column',
                 gap: '2px'
               }}>
-                {!isUser && (
+                {!isUser && msg.metadata?.hasProducts && (
                   <div style={{
                     fontSize: '11px',
                     color: '#666',
                     marginLeft: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
+                    marginBottom: '2px'
                   }}>
-                    <span>{getMessageLabel(msg.type)}</span>
-                    {msg.metadata?.hasProducts && (
-                      <span style={{ 
-                        background: '#e6f7e6', 
-                        color: '#2c7a2c', 
-                        padding: '2px 6px', 
-                        borderRadius: '12px',
-                        fontSize: '10px'
-                      }}>
-                        📦 {currentLanguage === 'zh' ? '含产品推荐' : 'Products'}
-                      </span>
-                    )}
+                    <span style={{ 
+                      background: '#e6f7e6', 
+                      color: '#2c7a2c', 
+                      padding: '2px 6px', 
+                      borderRadius: '12px',
+                      fontSize: '10px'
+                    }}>
+                      📦 Products Available
+                    </span>
                   </div>
                 )}
 
@@ -328,7 +278,7 @@ export default function SimpleChat() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder={getPlaceholder()}
+            placeholder="Type your message..."
             style={{
               flex: 1,
               border: 'none',
@@ -365,7 +315,7 @@ export default function SimpleChat() {
           color: '#999',
           textAlign: 'center'
         }}>
-          {getFooterText()}
+          Enter to send
         </div>
       </div>
 
