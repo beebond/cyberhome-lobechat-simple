@@ -1,4 +1,4 @@
-// pages/api/chat.js - 完全基于products.json结构修复
+// pages/api/chat.js - 完整最终版
 import OpenAI from 'openai';
 
 const STORE_URL = 'https://www.cyberhome.app';
@@ -26,39 +26,47 @@ const PRODUCT_KEYWORDS = [
   'price', 'cost', '多少钱', '价格', '推荐',
   'air fryer', 'toaster', 'kettle', 'blender', 'juicer',
   'yogurt', 'rice cooker', 'humidifier', 'massager',
-  '肠粉机', '酸奶机', '空气炸锅', '电水壶',
-  'model', '型号', '规格', 'compare', '对比',
+  '肠粉机', '酸奶机', 'yaourtière', 'joghurt', 'yogurtera',
+  '空气炸锅', '电水壶', 'model', '型号', '规格', 'compare', '对比',
   'replacement', 'parts', '配件', '替换', 'jar'
 ];
 
-// 格式化产品卡片 - 基于products.json的实际结构
+// 产品类型映射表 - 用于精确匹配
+const PRODUCT_TYPE_MAP = {
+  'yogurt maker': ['yogurt', 'yaourtière', 'joghurt', 'yogurtera', '酸奶机', 'SNJ'],
+  'air fryer': ['air fryer', '空气炸锅', 'friteuse', 'QZG'],
+  'rice cooker': ['rice cooker', '电饭煲', '米饭锅', 'cuiseur', 'DFB'],
+  'baby food maker': ['baby food', '辅食机', 'SJJ', 'baby cooker'],
+  'blender': ['blender', '搅拌机', 'mixeur', 'LLJ'],
+  'juicer': ['juicer', '榨汁机', 'extracteur', 'YZJ'],
+  'kettle': ['kettle', '电水壶', 'bouilloire', 'ZDH'],
+  'toaster': ['toaster', '面包机', 'grille-pain', 'DSL'],
+  'humidifier': ['humidifier', '加湿器', 'JSQ'],
+  'dough maker': ['dough maker', '和面机', 'HMJ'],
+  'sterilizer': ['sterilizer', '消毒器', 'XDG'],
+  'rice roll steamer': ['rice roll', '肠粉机', '米粉机', 'cheong fun', 'CFJ']
+};
+
+// 格式化产品卡片
 function formatProductCards(products) {
   if (!products || products.length === 0) return '';
   
   let cards = '';
   
-  // 使用Shopify的图片占位符
-  const defaultImage = 'https://cdn.shopify.com/s/files/1/0460/6066/7032/files/placeholder.png';
+  // 极简占位图
+  const defaultImage = 'https://placehold.co/80x80/f5f5f5/999999?text=Bear';
   
   products.slice(0, 3).forEach((p) => {
-    // ✅ 正确：必须使用handle构建产品链接
-    // 从products.json可以看到，handle字段是存在的，例如：
-    // "handle": "bear-yogurt-maker-with-1-bowl-1-0l-stainless-steel-tank-snj-c10h2"
-    const productUrl = p.handle 
-      ? `${STORE_URL}/products/${p.handle}`
-      : `${STORE_URL}/search?q=${p.product_id}`; // 如果没有handle，用搜索页作为备用
-    
-    // ✅ 正确：使用原始image_url
-    let imageUrl = defaultImage;
-    if (p.image_url) {
-      imageUrl = p.image_url.trim();
-      // 处理可能的//开头的URL
-      if (imageUrl.startsWith('//')) {
-        imageUrl = 'https:' + imageUrl;
-      }
-      // 确保是https
-      imageUrl = imageUrl.replace(/^http:/, 'https:');
+    // ✅ 必须有handle才能构建链接
+    if (!p.handle) {
+      console.warn('跳过没有handle的产品:', p.product_id);
+      return;
     }
+    
+    const productUrl = `${STORE_URL}/products/${p.handle}`;
+    
+    // ✅ 直接使用image_url，无需任何处理
+    const imageUrl = p.image_url || defaultImage;
     
     // 清理描述中的HTML
     let cleanDesc = '';
@@ -71,9 +79,9 @@ function formatProductCards(products) {
         .replace(/\s+/g, ' ')
         .trim();
       
-      if (cleanDesc.length > 120) {
-        const lastSpace = cleanDesc.substring(0, 120).lastIndexOf(' ');
-        cleanDesc = cleanDesc.substring(0, lastSpace > 0 ? lastSpace : 120) + '...';
+      if (cleanDesc.length > 100) {
+        const lastSpace = cleanDesc.substring(0, 100).lastIndexOf(' ');
+        cleanDesc = cleanDesc.substring(0, lastSpace > 0 ? lastSpace : 100) + '...';
       }
     }
     
@@ -101,7 +109,7 @@ function formatProductCards(products) {
       cards += `<div style="color: #4b5563; font-size: 13px; line-height: 1.5; margin: 10px 0;">${cleanDesc}</div>\n`;
     }
     
-    // Buy Now按钮 - 跳转产品页（使用handle）
+    // Buy Now按钮 - 跳转产品页
     cards += `<div style="margin-top: 12px;">\n`;
     cards += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 500;">🔗 Buy Now</a>\n`;
     cards += `</div>\n`;
@@ -158,12 +166,12 @@ function detectIntent(message) {
   return 'general';
 }
 
-// 计算产品相关性分数
+// 精确计算产品相关性分数
 function calculateProductScore(product, message) {
   let score = 0;
   const lowerMsg = message.toLowerCase();
   
-  // 构建搜索文本 - 包含所有可能相关的字段
+  // 构建搜索文本
   const searchText = [
     product.title || '',
     product.description_short || '',
@@ -177,37 +185,87 @@ function calculateProductScore(product, message) {
   // 提取关键词
   const keywords = lowerMsg.split(/\s+/).filter(k => k.length > 2);
   
-  keywords.forEach(keyword => {
-    // 完全匹配
-    if (searchText.includes(keyword)) {
-      score += 3;
-    }
-    // 部分匹配
-    if (keyword.length > 4 && searchText.includes(keyword.substring(0, keyword.length - 2))) {
-      score += 1;
-    }
-  });
-  
-  // 特殊处理：replacement jar for yogurt maker
-  if (lowerMsg.includes('replacement') && lowerMsg.includes('jar') && lowerMsg.includes('yogurt')) {
-    // 检查是否是酸奶机配件
-    if (product.title?.toLowerCase().includes('yogurt') || 
-        product.category?.toLowerCase().includes('yogurt') ||
-        product.product_id?.includes('SNJ')) {
-      score += 10;
+  // 检查是否是特定产品类型
+  let detectedType = null;
+  for (const [type, keywords_list] of Object.entries(PRODUCT_TYPE_MAP)) {
+    if (keywords_list.some(k => lowerMsg.includes(k))) {
+      detectedType = type;
+      break;
     }
   }
   
-  // 特殊处理：baby food maker 对比
-  if (lowerMsg.includes('difference between') && lowerMsg.includes('baby food maker')) {
-    if (product.title?.toLowerCase().includes('baby food') || 
-        product.category?.toLowerCase().includes('baby')) {
+  // 如果检测到产品类型，检查产品是否匹配
+  if (detectedType) {
+    const typeKeywords = PRODUCT_TYPE_MAP[detectedType] || [];
+    for (const keyword of typeKeywords) {
+      if (searchText.includes(keyword.toLowerCase())) {
+        score += 10;
+        break;
+      }
+    }
+  }
+  
+  // 关键词匹配
+  keywords.forEach(keyword => {
+    if (keyword.length < 3) return;
+    
+    if (searchText.includes(keyword)) {
+      score += 3;
+    }
+    
+    if (product.product_id?.toLowerCase().includes(keyword)) {
       score += 5;
+    }
+  });
+  
+  // 特殊处理：酸奶机
+  if (lowerMsg.includes('yogurt') || lowerMsg.includes('yaourtière') || lowerMsg.includes('酸奶')) {
+    if (product.product_id?.includes('SNJ') || 
+        product.title?.toLowerCase().includes('yogurt') ||
+        product.category?.toLowerCase().includes('yogurt')) {
+      score += 15;
+    }
+  }
+  
+  // 特殊处理：肠粉机
+  if (lowerMsg.includes('rice roll') || lowerMsg.includes('肠粉') || lowerMsg.includes('米粉')) {
+    if (product.product_id?.includes('CFJ') || 
+        product.title?.toLowerCase().includes('rice roll') ||
+        product.title?.toLowerCase().includes('肠粉')) {
+      score += 15;
+    }
+  }
+  
+  // 特殊处理：replacement jar
+  if (lowerMsg.includes('replacement') && lowerMsg.includes('jar')) {
+    if (product.product_id === 'SNJ-C10T1BK' || 
+        product.title?.toLowerCase().includes('jar') ||
+        product.category?.toLowerCase().includes('accessories')) {
+      score += 8;
     }
   }
   
   console.log(`产品 ${product.product_id} 得分: ${score}`);
   return score;
+}
+
+// 获取所有产品
+async function getAllProducts() {
+  try {
+    const response = await fetch(`${FAQ_API_URL}/api/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'all', type: 'product' })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      return data.productMatches || [];
+    }
+  } catch (error) {
+    console.error('获取所有产品失败:', error.message);
+  }
+  return [];
 }
 
 export default async function handler(req, res) {
@@ -223,6 +281,7 @@ export default async function handler(req, res) {
     }
 
     console.log('🔍 用户问题:', message);
+    console.log('🆔 会话ID:', sessionId);
 
     // === 1. 检测意图 ===
     const intent = detectIntent(message);
@@ -230,7 +289,6 @@ export default async function handler(req, res) {
 
     // === 2. 政策类问题直接返回FAQ ===
     if (intent === 'policy') {
-      // 政策类问题回复
       const policyResponses = {
         shipping: 'Standard shipping takes 5-7 business days within the US. Expedited shipping (2-3 days) is available for an additional fee.',
         return: 'You can return your order within 30 days of receiving it. Please make sure the item is in its original condition with all tags attached.',
@@ -264,33 +322,28 @@ export default async function handler(req, res) {
     
     if (intent === 'product') {
       try {
-        // 直接调用知识库API获取所有产品
-        const allProductsResponse = await fetch(`${FAQ_API_URL}/api/search`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: 'all', type: 'product' })
-        });
-
-        if (allProductsResponse.ok) {
-          const allData = await allProductsResponse.json();
-          const allProducts = allData.productMatches || [];
-          
-          // 计算分数并排序
-          const scored = allProducts.map(p => ({
-            ...p,
-            score: calculateProductScore(p, message)
-          }));
-          
-          // 只保留分数最高的3个，且分数>=3
-          relevantProducts = scored
-            .filter(p => p.score >= 3)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 3);
-          
-          console.log('📦 相关产品:', relevantProducts.length);
-          if (relevantProducts.length > 0) {
-            console.log('产品列表:', relevantProducts.map(p => ({ id: p.product_id, score: p.score })));
-          }
+        // 获取所有产品
+        const allProducts = await getAllProducts();
+        
+        // 计算分数并排序
+        const scored = allProducts.map(p => ({
+          ...p,
+          score: calculateProductScore(p, message)
+        }));
+        
+        // 只保留分数高的产品（阈值设为5）
+        relevantProducts = scored
+          .filter(p => p.score >= 5)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3);
+        
+        console.log('📦 相关产品:', relevantProducts.length);
+        if (relevantProducts.length > 0) {
+          console.log('产品列表:', relevantProducts.map(p => ({ 
+            id: p.product_id, 
+            title: p.title?.substring(0, 30),
+            score: p.score 
+          })));
         }
       } catch (error) {
         console.error('产品搜索失败:', error.message);
@@ -317,11 +370,12 @@ Current intent: ${intent}
 
 CRITICAL RULES:
 - ONLY mention products if intent is "product" AND we have relevant products
-- If no relevant products found, politely apologize and offer to notify them when available
+- If we have relevant products, enthusiastically tell them what we have
+- If no relevant products found, politely apologize and offer to notify them
 - Keep responses concise and helpful
 - Use the same language as the user
 
-${productContext ? 'Products we have: ' + productContext : ''}
+${productContext ? 'Products we have:\n' + productContext : ''}
 
 Brand info:
 - Website: ${STORE_URL}
