@@ -1,4 +1,4 @@
-// pages/api/chat.js - 完整最终版
+// pages/api/chat.js - 修复产品匹配算法
 import OpenAI from 'openai';
 
 const STORE_URL = 'https://www.cyberhome.app';
@@ -31,20 +31,56 @@ const PRODUCT_KEYWORDS = [
   'replacement', 'parts', '配件', '替换', 'jar'
 ];
 
-// 产品类型映射表 - 用于精确匹配
+// 产品类型映射表 - 增强版
 const PRODUCT_TYPE_MAP = {
-  'yogurt maker': ['yogurt', 'yaourtière', 'joghurt', 'yogurtera', '酸奶机', 'SNJ'],
-  'air fryer': ['air fryer', '空气炸锅', 'friteuse', 'QZG'],
-  'rice cooker': ['rice cooker', '电饭煲', '米饭锅', 'cuiseur', 'DFB'],
-  'baby food maker': ['baby food', '辅食机', 'SJJ', 'baby cooker'],
-  'blender': ['blender', '搅拌机', 'mixeur', 'LLJ'],
-  'juicer': ['juicer', '榨汁机', 'extracteur', 'YZJ'],
-  'kettle': ['kettle', '电水壶', 'bouilloire', 'ZDH'],
-  'toaster': ['toaster', '面包机', 'grille-pain', 'DSL'],
-  'humidifier': ['humidifier', '加湿器', 'JSQ'],
-  'dough maker': ['dough maker', '和面机', 'HMJ'],
-  'sterilizer': ['sterilizer', '消毒器', 'XDG'],
-  'rice roll steamer': ['rice roll', '肠粉机', '米粉机', 'cheong fun', 'CFJ']
+  'yogurt maker': {
+    keywords: ['yogurt', 'yaourtière', 'joghurt', 'yogurtera', '酸奶', '酸奶机', 'SNJ'],
+    product_ids: ['SNJ-C10H2', 'SNJ-C10T1BK', 'SNJ-A15K1']
+  },
+  'air fryer': {
+    keywords: ['air fryer', '空气炸锅', 'friteuse', 'QZG'],
+    product_ids: ['QZG-T17U7', 'QZG-S08C3', 'QZG-P15J5', 'QZG-F15E3', 'QZG-B14C1']
+  },
+  'rice cooker': {
+    keywords: ['rice cooker', '电饭煲', '米饭锅', 'cuiseur', 'DFB'],
+    product_ids: ['DFB-B16C1', 'DFB-B20K1', 'DFB-B12W1', 'DFB-P20T5']
+  },
+  'baby food maker': {
+    keywords: ['baby food', '辅食机', 'baby cooker', 'SJJ'],
+    product_ids: ['SJJ-M03P1', 'SJJ-R03B5', 'B0FL7K9WMX']
+  },
+  'blender': {
+    keywords: ['blender', '搅拌机', 'mixeur', 'LLJ'],
+    product_ids: ['LLJ-B03C1', 'LLJ-B08J5', 'LLJ-B12K1', 'LLJ-P03T5', 'LLJ-C04G5']
+  },
+  'juicer': {
+    keywords: ['juicer', '榨汁机', 'extracteur', 'YZJ'],
+    product_ids: ['YZJ-E01J5', 'TER-SJ01']
+  },
+  'kettle': {
+    keywords: ['kettle', '电水壶', 'bouilloire', 'ZDH'],
+    product_ids: ['ZDH-Q17W5', 'ZDH-A17V5', 'ZDH-A12R2', 'ZDH-D17K3', 'ZDH-H50H3']
+  },
+  'toaster': {
+    keywords: ['toaster', '面包机', 'grille-pain', 'DSL'],
+    product_ids: ['DSL-P02D5', 'DSL-C02A1']
+  },
+  'humidifier': {
+    keywords: ['humidifier', '加湿器', 'JSQ'],
+    product_ids: ['JSQ-B25W7', 'JSQ-F60A4', 'JSQ-C45C5', 'JSQ-230WB']
+  },
+  'dough maker': {
+    keywords: ['dough maker', '和面机', 'HMJ'],
+    product_ids: ['HMJ-A35M1', 'HMJ-A35Q3', 'HMJ-A70C1', 'HMJ-A50B1']
+  },
+  'sterilizer': {
+    keywords: ['sterilizer', '消毒器', 'XDG'],
+    product_ids: ['XDG-B05V', 'QXJ-C05F3']
+  },
+  'rice roll steamer': {
+    keywords: ['rice roll', '肠粉', '肠粉机', '米粉', '米粉机', 'cheong fun', 'CFJ'],
+    product_ids: ['CFJ-A80B2', 'CFJ-A30Q3']
+  }
 };
 
 // 格式化产品卡片
@@ -65,7 +101,7 @@ function formatProductCards(products) {
     
     const productUrl = `${STORE_URL}/products/${p.handle}`;
     
-    // ✅ 直接使用image_url，无需任何处理
+    // ✅ 直接使用image_url
     const imageUrl = p.image_url || defaultImage;
     
     // 清理描述中的HTML
@@ -85,16 +121,11 @@ function formatProductCards(products) {
       }
     }
     
-    // 产品卡片HTML
     cards += `<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #e5e7eb; border-radius: 12px; background: white; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 100%;">\n`;
-    
-    // 图片和基本信息行
     cards += `<div style="display: flex; gap: 15px; margin-bottom: 10px;">\n`;
     cards += `<div style="width: 80px; height: 80px; flex-shrink: 0; background: #f8f9fa; border-radius: 8px; overflow: hidden; border: 1px solid #eee;">\n`;
     cards += `<img src="${imageUrl}" alt="${p.title || 'Bear Product'}" style="width: 100%; height: 100%; object-fit: cover;" onerror="this.onerror=null; this.src='${defaultImage}';">\n`;
     cards += `</div>\n`;
-    
-    // 产品信息
     cards += `<div style="flex: 1;">\n`;
     cards += `<div style="font-weight: 600; font-size: 15px; color: #333;">${p.title || 'Bear Product'}</div>\n`;
     cards += `<div style="color: #666; font-size: 12px; margin: 4px 0;">Model: ${p.product_id || 'N/A'}</div>\n`;
@@ -104,12 +135,10 @@ function formatProductCards(products) {
     cards += `</div>\n`;
     cards += `</div>\n`;
     
-    // 描述
     if (cleanDesc) {
       cards += `<div style="color: #4b5563; font-size: 13px; line-height: 1.5; margin: 10px 0;">${cleanDesc}</div>\n`;
     }
     
-    // Buy Now按钮 - 跳转产品页
     cards += `<div style="margin-top: 12px;">\n`;
     cards += `<a href="${productUrl}" target="_blank" style="display: inline-block; padding: 8px 16px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-size: 13px; font-weight: 500;">🔗 Buy Now</a>\n`;
     cards += `</div>\n`;
@@ -119,50 +148,18 @@ function formatProductCards(products) {
   return cards;
 }
 
-// 格式化产品缺失表单
-function formatRequestForm(productRequest) {
-  return `
-<div style="margin: 20px 0; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background: #f9fafb; text-align: center;">
-  <div style="font-size: 18px; margin-bottom: 10px;">🔍 Product Not Found</div>
-  <p style="color: #4b5563; margin-bottom: 15px;">We couldn't find the exact product you're looking for. Leave your email and we'll notify you when it's available.</p>
-  <form id="productRequestForm" style="display: flex; gap: 10px; max-width: 400px; margin: 0 auto;">
-    <input type="email" placeholder="Your email address" style="flex: 1; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;" required>
-    <button type="submit" style="padding: 10px 20px; background-color: #10b981; color: white; border: none; border-radius: 6px; font-size: 14px; cursor: pointer;">Notify Me</button>
-  </form>
-  <p style="font-size: 12px; color: #9ca3af; margin-top: 10px;">We'll only use your email to notify you about this product.</p>
-</div>
-<script>
-document.getElementById('productRequestForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const email = e.target.querySelector('input[type="email"]').value;
-  const product = ${JSON.stringify(productRequest)};
-  
-  // 这里可以调用您的API保存请求
-  console.log('Product request:', { email, product });
-  
-  // 显示成功消息
-  const form = e.target;
-  form.innerHTML = '<div style="color: #10b981; padding: 10px;">✓ Thank you! We\'ll notify you when this product is available.</div>';
-});
-</script>
-  `;
-}
-
 // 判断意图
 function detectIntent(message) {
   const lowerMsg = message.toLowerCase().trim();
   
-  // 1. 政策/售后类
   if (POLICY_KEYWORDS.some(keyword => lowerMsg.includes(keyword))) {
     return 'policy';
   }
   
-  // 2. 产品查询类
   if (PRODUCT_KEYWORDS.some(keyword => lowerMsg.includes(keyword))) {
     return 'product';
   }
   
-  // 3. 默认
   return 'general';
 }
 
@@ -178,70 +175,74 @@ function calculateProductScore(product, message) {
     product.category || '',
     product.product_id || '',
     product.type || '',
-    product.vendor || '',
     ...(product.tags || [])
   ].join(' ').toLowerCase();
   
-  // 提取关键词
-  const keywords = lowerMsg.split(/\s+/).filter(k => k.length > 2);
-  
-  // 检查是否是特定产品类型
-  let detectedType = null;
-  for (const [type, keywords_list] of Object.entries(PRODUCT_TYPE_MAP)) {
-    if (keywords_list.some(k => lowerMsg.includes(k))) {
-      detectedType = type;
-      break;
-    }
+  // 1. 产品ID直接匹配（最高分）
+  if (product.product_id && lowerMsg.includes(product.product_id.toLowerCase())) {
+    score += 50;
   }
   
-  // 如果检测到产品类型，检查产品是否匹配
-  if (detectedType) {
-    const typeKeywords = PRODUCT_TYPE_MAP[detectedType] || [];
-    for (const keyword of typeKeywords) {
-      if (searchText.includes(keyword.toLowerCase())) {
-        score += 10;
-        break;
+  // 2. 检查是否是特定产品类型
+  for (const [type, config] of Object.entries(PRODUCT_TYPE_MAP)) {
+    // 检查关键词匹配
+    const keywordMatch = config.keywords.some(k => lowerMsg.includes(k));
+    if (keywordMatch) {
+      // 如果产品ID在预设列表中，加高分
+      if (config.product_ids.includes(product.product_id)) {
+        score += 30;
+      }
+      // 检查标题和描述是否包含类型关键词
+      if (searchText.includes(type) || 
+          config.keywords.some(k => searchText.includes(k))) {
+        score += 20;
       }
     }
   }
   
-  // 关键词匹配
+  // 3. 关键词匹配
+  const keywords = lowerMsg.split(/\s+/).filter(k => k.length > 2);
   keywords.forEach(keyword => {
-    if (keyword.length < 3) return;
-    
     if (searchText.includes(keyword)) {
-      score += 3;
-    }
-    
-    if (product.product_id?.toLowerCase().includes(keyword)) {
       score += 5;
+    }
+    // 标题开头匹配（更重要）
+    if (product.title?.toLowerCase().startsWith(keyword)) {
+      score += 8;
     }
   });
   
-  // 特殊处理：酸奶机
+  // 4. 特殊处理：酸奶机
   if (lowerMsg.includes('yogurt') || lowerMsg.includes('yaourtière') || lowerMsg.includes('酸奶')) {
-    if (product.product_id?.includes('SNJ') || 
-        product.title?.toLowerCase().includes('yogurt') ||
-        product.category?.toLowerCase().includes('yogurt')) {
-      score += 15;
+    if (product.product_id?.startsWith('SNJ')) {
+      score += 40;
+    }
+    if (product.title?.toLowerCase().includes('yogurt')) {
+      score += 35;
     }
   }
   
-  // 特殊处理：肠粉机
+  // 5. 特殊处理：肠粉机
   if (lowerMsg.includes('rice roll') || lowerMsg.includes('肠粉') || lowerMsg.includes('米粉')) {
-    if (product.product_id?.includes('CFJ') || 
-        product.title?.toLowerCase().includes('rice roll') ||
-        product.title?.toLowerCase().includes('肠粉')) {
-      score += 15;
+    if (product.product_id?.startsWith('CFJ')) {
+      score += 40;
+    }
+    if (product.title?.toLowerCase().includes('rice roll')) {
+      score += 35;
     }
   }
   
-  // 特殊处理：replacement jar
-  if (lowerMsg.includes('replacement') && lowerMsg.includes('jar')) {
-    if (product.product_id === 'SNJ-C10T1BK' || 
-        product.title?.toLowerCase().includes('jar') ||
-        product.category?.toLowerCase().includes('accessories')) {
-      score += 8;
+  // 6. 特殊处理：婴儿辅食机
+  if (lowerMsg.includes('baby food') || lowerMsg.includes('辅食')) {
+    if (product.product_id?.startsWith('SJJ')) {
+      score += 40;
+    }
+  }
+  
+  // 7. 特殊处理：搅拌机
+  if (lowerMsg.includes('blender') || lowerMsg.includes('搅拌')) {
+    if (product.product_id?.startsWith('LLJ')) {
+      score += 40;
     }
   }
   
@@ -287,7 +288,7 @@ export default async function handler(req, res) {
     const intent = detectIntent(message);
     console.log('🎯 意图:', intent);
 
-    // === 2. 政策类问题直接返回FAQ ===
+    // === 2. 政策类问题直接返回 ===
     if (intent === 'policy') {
       const policyResponses = {
         shipping: 'Standard shipping takes 5-7 business days within the US. Expedited shipping (2-3 days) is available for an additional fee.',
@@ -322,18 +323,17 @@ export default async function handler(req, res) {
     
     if (intent === 'product') {
       try {
-        // 获取所有产品
         const allProducts = await getAllProducts();
         
-        // 计算分数并排序
+        // 计算分数
         const scored = allProducts.map(p => ({
           ...p,
           score: calculateProductScore(p, message)
         }));
         
-        // 只保留分数高的产品（阈值设为5）
+        // 降低阈值，确保能找到产品
         relevantProducts = scored
-          .filter(p => p.score >= 5)
+          .filter(p => p.score >= 15) // 降低阈值到15
           .sort((a, b) => b.score - a.score)
           .slice(0, 3);
         
@@ -362,6 +362,27 @@ export default async function handler(req, res) {
       relevantProducts.forEach(p => {
         productContext += `- ${p.title} (Model: ${p.product_id}, Price: $${p.price})\n`;
       });
+    } else {
+      // 即使没有高分产品，也检查是否有任何匹配
+      const allProducts = await getAllProducts();
+      const anyMatch = allProducts.some(p => 
+        p.product_id?.startsWith('SNJ') || 
+        p.product_id?.startsWith('CFJ') ||
+        p.title?.toLowerCase().includes('yogurt') ||
+        p.title?.toLowerCase().includes('肠粉')
+      );
+      
+      if (anyMatch) {
+        console.log('⚠️ 有匹配但分数不足，降低阈值重试');
+        const scored = allProducts.map(p => ({
+          ...p,
+          score: calculateProductScore(p, message)
+        }));
+        relevantProducts = scored
+          .filter(p => p.score >= 10)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3);
+      }
     }
 
     const systemPrompt = `You are a professional shopping assistant for CyberHome.
@@ -396,16 +417,36 @@ Brand info:
     // === 5. 决定最终回复 ===
     let finalResponse = aiResponse;
     
-    // 如果有相关产品，显示产品卡片
     if (intent === 'product' && relevantProducts.length > 0) {
       const productCards = formatProductCards(relevantProducts);
       finalResponse = aiResponse + '\n\n【Related Products】\n' + productCards;
     }
     
-    // 如果是产品查询但没有找到相关产品，显示请求表单
     if (intent === 'product' && relevantProducts.length === 0) {
-      const requestForm = formatRequestForm({ query: message });
-      finalResponse = aiResponse + '\n\n' + requestForm;
+      // 检查是否有已知产品但分数不足
+      const allProducts = await getAllProducts();
+      const hasProduct = allProducts.some(p => 
+        (message.toLowerCase().includes('yogurt') && p.product_id?.startsWith('SNJ')) ||
+        (message.toLowerCase().includes('rice roll') && p.product_id?.startsWith('CFJ')) ||
+        (message.toLowerCase().includes('baby food') && p.product_id?.startsWith('SJJ'))
+      );
+      
+      if (hasProduct) {
+        // 如果有产品但没匹配上，手动返回
+        const manualProducts = allProducts.filter(p => 
+          (message.toLowerCase().includes('yogurt') && p.product_id?.startsWith('SNJ')) ||
+          (message.toLowerCase().includes('rice roll') && p.product_id?.startsWith('CFJ')) ||
+          (message.toLowerCase().includes('baby food') && p.product_id?.startsWith('SJJ'))
+        ).slice(0, 3);
+        
+        if (manualProducts.length > 0) {
+          const productCards = formatProductCards(manualProducts);
+          finalResponse = `Yes, we have ${manualProducts.length > 1 ? 'several' : 'a'} ${message.includes('yogurt') ? 'yogurt maker' : 'product'} available! Here are our options:\n\n【Related Products】\n` + productCards;
+        }
+      } else {
+        const requestForm = formatRequestForm({ query: message });
+        finalResponse = aiResponse + '\n\n' + requestForm;
+      }
     }
 
     res.status(200).json({
