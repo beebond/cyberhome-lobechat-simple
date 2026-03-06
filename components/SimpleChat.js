@@ -1,342 +1,325 @@
-// components/SimpleChat.js - 简化显示版
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from "react";
+
+function formatTime(value) {
+  try {
+    const d = value ? new Date(value) : new Date();
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+function ProductCard({ product }) {
+  if (!product) return null;
+
+  const title = product.title || "Product";
+  const image = product.image || product.image_url || "";
+  const price = product.price ?? "";
+  const model = product.model || product.product_id || "";
+  const url = product.url || (product.handle ? `https://www.cyberhome.app/products/${product.handle}` : "#");
+
+  return (
+    <div style={{
+      border: "1px solid #e5e7eb",
+      borderRadius: 16,
+      padding: 16,
+      marginTop: 12,
+      display: "flex",
+      gap: 16,
+      background: "#fff"
+    }}>
+      <div style={{
+        width: 96,
+        height: 96,
+        borderRadius: 12,
+        overflow: "hidden",
+        background: "#f3f4f6",
+        flexShrink: 0
+      }}>
+        {image ? (
+          <img
+            src={image}
+            alt={title}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : null}
+      </div>
+
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.35, marginBottom: 6 }}>
+          {title}
+        </div>
+
+        {model ? (
+          <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 8 }}>
+            Model: {model}
+          </div>
+        ) : null}
+
+        {price !== "" ? (
+          <div style={{ fontSize: 16, color: "#d97706", fontWeight: 700, marginBottom: 12 }}>
+            {price}
+          </div>
+        ) : null}
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              background: "#2563eb",
+              color: "#fff",
+              padding: "10px 16px",
+              borderRadius: 12,
+              textDecoration: "none",
+              fontWeight: 600
+            }}
+          >
+            View Details
+          </a>
+
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              background: "#10b981",
+              color: "#fff",
+              padding: "10px 16px",
+              borderRadius: 12,
+              textDecoration: "none",
+              fontWeight: 600
+            }}
+          >
+            Add to Cart
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function SimpleChat() {
   const [messages, setMessages] = useState([
     {
-      id: 'welcome',
-      type: 'ai',
-      content: 'Welcome to CyberHome Support! How can we help you today?',
-      timestamp: new Date()
-    }
+      id: 1,
+      role: "assistant",
+      content: "Welcome to CyberHome Support! How can we help you today?",
+      createdAt: new Date().toISOString(),
+      products: [],
+    },
   ]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sessionId, setSessionId] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('chatSessionId');
-      if (stored) return stored;
-    }
-    return Date.now().toString();
-  });
-  
-  const messagesEndRef = useRef(null);
+  const bottomRef = useRef(null);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('chatSessionId', sessionId);
-    }
-  }, [sessionId]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  async function sendMessage() {
+    const text = input.trim();
+    if (!text || loading) return;
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return;
-
-    const userMessage = {
+    const userMsg = {
       id: Date.now(),
-      type: 'user',
-      content: input,
-      timestamp: new Date()
+      role: "user",
+      content: text,
+      createdAt: new Date().toISOString(),
+      products: [],
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
     setLoading(true);
 
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: input, sessionId }),
+      const history = messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const resp = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text, history }),
       });
 
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await resp.json();
 
-      const data = await response.json();
-
-      const aiMessage = {
+      const aiMsg = {
         id: Date.now() + 1,
-        type: 'ai',
-        content: data.response,
-        timestamp: new Date(data.timestamp),
-        metadata: { hasProducts: data.hasProducts }
+        role: "assistant",
+        content: data?.response || "Sorry, I could not generate a response.",
+        createdAt: new Date().toISOString(),
+        products: Array.isArray(data?.products) ? data.products : [],
       };
 
-      setMessages(prev => [...prev, aiMessage]);
-      
-      if (data.sessionId && data.sessionId !== sessionId) {
-        setSessionId(data.sessionId);
-      }
-
+      setMessages((prev) => [...prev, aiMsg]);
     } catch (error) {
-      console.error('❌ API 调用错误:', error);
-      setMessages(prev => [...prev, {
-        id: Date.now() + 1,
-        type: 'ai',
-        content: 'Sorry, service temporarily unavailable. Please try again.',
-        timestamp: new Date(),
-        metadata: { error: true }
-      }]);
+      console.error("API error:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          role: "assistant",
+          content: "Sorry, service temporarily unavailable. Please try again.",
+          createdAt: new Date().toISOString(),
+          products: [],
+        },
+      ]);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+  function onKeyDown(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
     }
-  };
-
-  const formatTime = (date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const renderHTML = (html) => {
-    const sanitized = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-    return { __html: sanitized };
-  };
-
-  const containsHTML = (text) => /<[a-z][\s\S]*>/i.test(text);
+  }
 
   return (
     <div style={{
-      width: '100%',
-      height: '100%',
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'white',
-      borderRadius: '12px',
-      overflow: 'hidden',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
+      maxWidth: 1080,
+      margin: "24px auto",
+      background: "#f9fafb",
+      borderRadius: 18,
+      overflow: "hidden",
+      border: "1px solid #e5e7eb"
     }}>
-      {/* 头部 */}
       <div style={{
-        padding: '12px 16px',
-        background: '#1a1a1a',
-        color: 'white',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8
+        background: "#171717",
+        color: "#fff",
+        padding: "18px 22px",
+        fontWeight: 700,
+        fontSize: 18
       }}>
-        <div style={{
-          width: 28,
-          height: 28,
-          background: '#1890ff',
-          borderRadius: 6,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 16,
-          fontWeight: 'bold'
-        }}>
-          C
-        </div>
-        <div style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>
-          CyberHome Support
-        </div>
+        CyberHome Support
       </div>
 
-      {/* 消息区域 */}
       <div style={{
-        flex: 1,
-        overflowY: 'auto',
-        padding: '16px',
-        background: '#f5f5f5',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '12px'
+        padding: 20,
+        minHeight: 620,
+        maxHeight: 760,
+        overflowY: "auto",
+        background: "#ededed"
       }}>
-        {messages.map((msg) => {
-          const isUser = msg.type === 'user';
-          const isHTML = containsHTML(msg.content);
-          
-          return (
-            <div key={msg.id} style={{
-              display: 'flex',
-              flexDirection: isUser ? 'row-reverse' : 'row',
-              gap: '8px',
-              alignItems: 'flex-start'
+        {messages.map((msg) => (
+          <div key={msg.id} style={{ marginBottom: 24 }}>
+            <div style={{
+              display: "flex",
+              justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+              gap: 10
             }}>
               <div style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '50%',
-                background: isUser ? '#1890ff' : '#f0f0f0',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '14px',
-                color: isUser ? 'white' : '#333',
-                flexShrink: 0
+                maxWidth: "82%",
+                background: msg.role === "user" ? "#2196f3" : "#fff",
+                color: msg.role === "user" ? "#fff" : "#1f2937",
+                padding: "14px 16px",
+                borderRadius: 18,
+                fontSize: 16,
+                lineHeight: 1.5,
+                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                whiteSpace: "pre-wrap"
               }}>
-                {isUser ? '👤' : '🤖'}
-              </div>
-
-              <div style={{
-                maxWidth: 'calc(100% - 36px)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '2px'
-              }}>
-                {!isUser && msg.metadata?.hasProducts && (
-                  <div style={{
-                    fontSize: '11px',
-                    color: '#666',
-                    marginLeft: '4px',
-                    marginBottom: '2px'
-                  }}>
-                    <span style={{ 
-                      background: '#e6f7e6', 
-                      color: '#2c7a2c', 
-                      padding: '2px 6px', 
-                      borderRadius: '12px',
-                      fontSize: '10px'
-                    }}>
-                      📦 Products Available
-                    </span>
-                  </div>
-                )}
-
-                <div style={{
-                  padding: isHTML ? '0' : '10px 12px',
-                  borderRadius: '12px',
-                  background: isUser ? '#1890ff' : 'white',
-                  color: isUser ? 'white' : '#333',
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.1)',
-                  wordBreak: 'break-word',
-                  fontSize: '14px',
-                  lineHeight: 1.5,
-                  borderTopLeftRadius: isUser ? '12px' : '4px',
-                  borderTopRightRadius: isUser ? '4px' : '12px',
-                  overflow: 'hidden'
-                }}>
-                  {isHTML ? (
-                    <div dangerouslySetInnerHTML={renderHTML(msg.content)} />
-                  ) : (
-                    <div style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</div>
-                  )}
-                </div>
-                
-                <div style={{
-                  fontSize: '10px',
-                  color: '#999',
-                  textAlign: isUser ? 'right' : 'left',
-                  padding: '0 4px'
-                }}>
-                  {formatTime(msg.timestamp)}
-                </div>
+                {msg.content}
               </div>
             </div>
-          );
-        })}
 
-        {loading && (
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <div style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '50%',
-              background: '#f0f0f0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '14px'
+              fontSize: 12,
+              color: "#9ca3af",
+              marginTop: 6,
+              paddingLeft: msg.role === "assistant" ? 8 : 0,
+              textAlign: msg.role === "user" ? "right" : "left"
             }}>
-              🤖
+              {formatTime(msg.createdAt)}
             </div>
-            <div style={{
-              padding: '10px 12px',
-              background: 'white',
-              borderRadius: '12px',
-              borderTopLeftRadius: '4px',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.1)'
-            }}>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                <span style={{ animation: 'pulse 1s infinite' }}>.</span>
-                <span style={{ animation: 'pulse 1s infinite 0.2s' }}>.</span>
-                <span style={{ animation: 'pulse 1s infinite 0.4s' }}>.</span>
+
+            {msg.role === "assistant" && Array.isArray(msg.products) && msg.products.length > 0 ? (
+              <div style={{ marginTop: 10 }}>
+                <div style={{
+                  display: "inline-block",
+                  background: "#dcfce7",
+                  color: "#15803d",
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginBottom: 8
+                }}>
+                  Products Available
+                </div>
+
+                {msg.products.map((product, idx) => (
+                  <ProductCard key={product.id || product.handle || idx} product={product} />
+                ))}
               </div>
-            </div>
+            ) : null}
           </div>
-        )}
-        
-        <div ref={messagesEndRef} />
+        ))}
+
+        {loading ? (
+          <div style={{ color: "#6b7280", fontSize: 14 }}>Thinking...</div>
+        ) : null}
+
+        <div ref={bottomRef} />
       </div>
 
-      {/* 输入区域 */}
       <div style={{
-        padding: '12px',
-        borderTop: '1px solid #e0e0e0',
-        background: 'white'
+        padding: 16,
+        background: "#f3f4f6",
+        borderTop: "1px solid #e5e7eb"
       }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          background: '#f5f5f5',
-          borderRadius: '20px',
-          padding: '4px 4px 4px 12px'
-        }}>
-          <input
+        <div style={{ display: "flex", gap: 12 }}>
+          <textarea
             value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyPress}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
             placeholder="Type your message..."
+            rows={1}
             style={{
               flex: 1,
-              border: 'none',
-              background: 'transparent',
-              padding: '8px 0',
-              fontSize: '14px',
-              outline: 'none'
+              resize: "vertical",
+              minHeight: 52,
+              borderRadius: 16,
+              border: "1px solid #d1d5db",
+              padding: "14px 16px",
+              fontSize: 16,
+              outline: "none"
             }}
-            disabled={loading}
           />
           <button
             onClick={sendMessage}
-            disabled={loading || !input.trim()}
+            disabled={loading}
             style={{
-              background: loading || !input.trim() ? '#ccc' : '#1890ff',
-              border: 'none',
-              borderRadius: '50%',
-              width: '32px',
-              height: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: loading || !input.trim() ? 'not-allowed' : 'pointer',
-              color: 'white',
-              fontSize: '16px'
+              width: 52,
+              height: 52,
+              borderRadius: 999,
+              border: "none",
+              background: loading ? "#d1d5db" : "#9ca3af",
+              color: "#fff",
+              fontSize: 18,
+              cursor: loading ? "not-allowed" : "pointer"
             }}
           >
             ↑
           </button>
         </div>
+
         <div style={{
-          marginTop: '6px',
-          fontSize: '10px',
-          color: '#999',
-          textAlign: 'center'
+          textAlign: "center",
+          color: "#9ca3af",
+          fontSize: 12,
+          marginTop: 8
         }}>
           Enter to send
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 1; }
-        }
-      `}</style>
     </div>
   );
 }
