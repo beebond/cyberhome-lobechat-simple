@@ -5,24 +5,18 @@ const openai = new OpenAI({
 });
 
 const STORE_URL = (process.env.STORE_URL || "https://www.cyberhome.app").replace(/\/+$/, "");
+
 let FAQ_API_URL = (process.env.FAQ_API_URL || "https://cyberhome-faq-api-production.up.railway.app").trim();
 if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
   FAQ_API_URL = "https://" + FAQ_API_URL;
 }
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
-const PRODUCT_INTENT_KEYWORDS = [
-  "yogurt maker", "yogurt", "rice cooker", "rice roll steamer", "cheong fun", "blender",
-  "air fryer", "sterilizer", "baby food maker", "humidifier", "toaster", "kettle",
-  "steamer", "dough maker", "mixer", "clay pot", "replacement parts", "jar", "glass jar",
-  "model", "recommend", "compare", "difference", "buy", "looking for", "do you have"
-];
-
 const STOPWORDS = new Set([
   "do", "you", "have", "the", "a", "an", "and", "or", "for", "with", "please", "some",
   "recommend", "show", "me", "i", "am", "looking", "to", "of", "on", "in", "is", "are",
   "sell", "need", "want", "product", "products", "bear", "brand", "machine", "electric",
-  "appliance", "appliances"
+  "appliance", "appliances", "please", "send", "link"
 ]);
 
 function normalizeText(value) {
@@ -35,18 +29,6 @@ function tokenize(text) {
     .split(/\s+/)
     .filter(Boolean)
     .filter((w) => !STOPWORDS.has(w));
-}
-
-function extractIntent(userMessage) {
-  const q = normalizeText(userMessage);
-  const isProductIntent =
-    PRODUCT_INTENT_KEYWORDS.some((k) => q.includes(k)) ||
-    /(recommend|compare|difference|looking for|do you have|which one|best)/i.test(userMessage);
-
-  const asksPolicy =
-    /(shipping|ship|delivery|warranty|return|refund|voltage|canada|mexico|policy|support|contact)/i.test(userMessage);
-
-  return { isProductIntent, asksPolicy };
 }
 
 function productUrl(handle) {
@@ -78,9 +60,43 @@ function isInStock(raw) {
   return s === "in_stock";
 }
 
+function buildSearchQueries(userMessage) {
+  const q = normalizeText(userMessage);
+  const queries = [userMessage];
+
+  if (q.includes("rice roll") || q.includes("cheong fun") || q.includes("rice noodle roll")) {
+    queries.push(
+      "rice roll steamer",
+      "cheong fun steamer",
+      "rice noodle roll steamer",
+      "cheong fun machine",
+      "rice noodle roll machine"
+    );
+  }
+
+  if (q.includes("yogurt")) {
+    queries.push("yogurt maker");
+  }
+
+  if (q.includes("glass jar") || q.includes("jar")) {
+    queries.push("yogurt maker glass jar");
+  }
+
+  if (q.includes("blender")) {
+    queries.push("blender");
+  }
+
+  if (q.includes("rice cooker")) {
+    queries.push("rice cooker");
+  }
+
+  return [...new Set(queries)];
+}
+
 function scoreProduct(raw, userMessage) {
   const q = normalizeText(userMessage);
   const words = tokenize(userMessage);
+
   const haystack = normalizeText([
     raw.title,
     raw.type,
@@ -89,13 +105,10 @@ function scoreProduct(raw, userMessage) {
     raw.description_short,
     Array.isArray(raw.tags) ? raw.tags.join(" ") : "",
     raw.handle,
+    raw.model,
   ].join(" "));
 
   let score = 0;
-
-  for (const phrase of PRODUCT_INTENT_KEYWORDS) {
-    if (q.includes(phrase) && haystack.includes(phrase)) score += 8;
-  }
 
   for (const w of words) {
     if (haystack.includes(w)) score += 2;
@@ -103,24 +116,47 @@ function scoreProduct(raw, userMessage) {
 
   if (q.includes("yogurt") && haystack.includes("yogurt")) score += 12;
   if (q.includes("rice cooker") && haystack.includes("rice cooker")) score += 12;
-  if ((q.includes("cheong fun") || q.includes("rice roll")) && (haystack.includes("cheong fun") || haystack.includes("rice roll"))) score += 12;
+  if ((q.includes("cheong fun") || q.includes("rice roll") || q.includes("rice noodle roll")) &&
+      (haystack.includes("cheong fun") || haystack.includes("rice roll") || haystack.includes("rice noodle roll"))) {
+    score += 16;
+  }
+  if (q.includes("steamer") && haystack.includes("steamer")) score += 8;
   if (q.includes("blender") && haystack.includes("blender")) score += 12;
   if (q.includes("air fryer") && haystack.includes("air fryer")) score += 12;
   if (q.includes("humidifier") && haystack.includes("humidifier")) score += 12;
   if (q.includes("sterilizer") && haystack.includes("sterilizer")) score += 12;
   if (q.includes("dough maker") && haystack.includes("dough maker")) score += 12;
-  if (q.includes("parts") && haystack.includes("parts")) score += 6;
+  if ((q.includes("jar") || q.includes("glass jar")) && (haystack.includes("jar") || haystack.includes("glass"))) score += 10;
 
+  // Penalize obvious mismatch for narrow queries
   if (q.includes("yogurt") && !haystack.includes("yogurt")) score -= 10;
-  if (q.includes("rice cooker") && !haystack.includes("rice cooker")) score -= 10;
-  if ((q.includes("cheong fun") || q.includes("rice roll")) && !(haystack.includes("cheong fun") || haystack.includes("rice roll"))) score -= 10;
   if (q.includes("blender") && !haystack.includes("blender")) score -= 10;
+  if (q.includes("rice cooker") && !haystack.includes("rice cooker")) score -= 10;
+  if ((q.includes("cheong fun") || q.includes("rice roll")) &&
+      !(haystack.includes("cheong fun") || haystack.includes("rice roll") || haystack.includes("rice noodle roll"))) {
+    score -= 12;
+  }
 
   return score;
 }
 
-async function searchKB(userMessage) {
-  const url = `${FAQ_API_URL}/api/search?q=${encodeURIComponent(userMessage)}`;
+function dedupeProducts(products) {
+  const seen = new Set();
+  const result = [];
+
+  for (const p of products) {
+    const key = p.handle || p.id || p.title;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(p);
+    }
+  }
+
+  return result;
+}
+
+async function fetchSearch(query) {
+  const url = `${FAQ_API_URL}/api/search?q=${encodeURIComponent(query)}`;
   const response = await fetch(url, {
     method: "GET",
     headers: { Accept: "application/json" },
@@ -130,36 +166,81 @@ async function searchKB(userMessage) {
     throw new Error(`FAQ API HTTP ${response.status}`);
   }
 
-  const data = await response.json();
-  const faqs = Array.isArray(data.faqMatches) ? data.faqMatches : Array.isArray(data.faqs) ? data.faqs : [];
-  const rawProducts = Array.isArray(data.productMatches) ? data.productMatches : Array.isArray(data.products) ? data.products : [];
+  return response.json();
+}
 
-  const products = rawProducts
+async function searchKB(userMessage) {
+  const queries = buildSearchQueries(userMessage);
+
+  let allFaqs = [];
+  let allProducts = [];
+
+  for (const q of queries) {
+    try {
+      const data = await fetchSearch(q);
+      const faqs = Array.isArray(data.faqMatches) ? data.faqMatches : Array.isArray(data.faqs) ? data.faqs : [];
+      const rawProducts = Array.isArray(data.productMatches) ? data.productMatches : Array.isArray(data.products) ? data.products : [];
+
+      allFaqs = allFaqs.concat(faqs);
+      allProducts = allProducts.concat(rawProducts);
+    } catch (err) {
+      console.error("KB query failed:", q, err);
+    }
+  }
+
+  const normalized = allProducts
     .filter(isInStock)
     .map(normalizeProduct)
-    .map((p) => ({ ...p, _score: scoreProduct(p, userMessage) }))
-    .filter((p) => p._score >= 4)
-    .sort((a, b) => b._score - a._score)
-    .slice(0, 3)
-    .map(({ _score, ...rest }) => rest);
+    .map((p) => ({ ...p, _score: scoreProduct(p, userMessage) }));
 
-  return { faqs, products };
+  let ranked = dedupeProducts(normalized)
+    .filter((p) => p._score >= 2)
+    .sort((a, b) => b._score - a._score);
+
+  // Fallback if scoring too strict
+  if (ranked.length === 0) {
+    ranked = dedupeProducts(normalized).sort((a, b) => b._score - a._score);
+  }
+
+  return {
+    faqs: allFaqs.slice(0, 8),
+    products: ranked.slice(0, 3).map(({ _score, ...rest }) => rest),
+  };
 }
 
 function summarizeFaqs(faqs) {
-  return (faqs || []).slice(0, 8).map((f, i) => {
-    const q = f.question || f.q || "";
-    const a = f.answer || f.a || "";
-    return `FAQ ${i + 1}\nQuestion: ${q}\nAnswer: ${a}`;
-  }).join("\n\n");
+  return (faqs || [])
+    .slice(0, 8)
+    .map((f, i) => {
+      const q = f.question || f.q || "";
+      const a = f.answer || f.a || "";
+      return `FAQ ${i + 1}
+Question: ${q}
+Answer: ${a}`;
+    })
+    .join("\n\n");
 }
 
-function wantsDifferentLanguage(text) {
-  return /(please speak english|english please|reply in english|respond in english)/i.test(text)
-    ? "English"
-    : /(español|spanish|habla español|en español|reply in spanish)/i.test(text)
-    ? "Spanish"
-    : null;
+function detectLanguagePreference(text) {
+  if (/(please speak english|english please|reply in english|respond in english)/i.test(text)) {
+    return "English";
+  }
+  if (/(español|spanish|habla español|en español|reply in spanish)/i.test(text)) {
+    return "Spanish";
+  }
+  return null;
+}
+
+function extractIntent(userMessage) {
+  const q = normalizeText(userMessage);
+
+  const isProductIntent =
+    /(looking for|do you have|recommend|compare|which one|best|model|show me|rice cooker|yogurt|steamer|cheong fun|blender|air fryer|humidifier|sterilizer|dough maker|jar)/i.test(q);
+
+  const asksPolicy =
+    /(shipping|ship|delivery|warranty|return|refund|voltage|canada|mexico|policy|support|contact)/i.test(q);
+
+  return { isProductIntent, asksPolicy };
 }
 
 export default async function handler(req, res) {
@@ -183,7 +264,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const { isProductIntent } = extractIntent(userMessage);
+    const { isProductIntent, asksPolicy } = extractIntent(userMessage);
 
     let kb = { faqs: [], products: [] };
     try {
@@ -192,8 +273,8 @@ export default async function handler(req, res) {
       console.error("KB search failed:", err);
     }
 
-    const languageRequest = wantsDifferentLanguage(userMessage);
     const faqContext = summarizeFaqs(kb.faqs);
+    const languagePreference = detectLanguagePreference(userMessage);
 
     const messages = [
       {
@@ -201,18 +282,17 @@ export default async function handler(req, res) {
         content:
           "You are CyberHome Support Assistant for a U.S./Canada Shopify home appliance store. " +
           "Always answer in English unless the user explicitly asks for another language. " +
-          "Be concise, warm, and sales-helpful. " +
-          "For policy, shipping, warranty, voltage, returns, and store information, rely only on the FAQ context provided. " +
-          "Do not invent policies. " +
-          "If the user is asking for product discovery or recommendation, answer briefly and then let the UI show up to 3 matching products if available. " +
-          "Do not list many products in text if product cards will already be shown.",
+          "Be concise, natural, warm, and commercially helpful. " +
+          "Do not invent store policies. Use only the FAQ/store context when answering policy questions. " +
+          "If matching in-stock products exist, do not say you cannot send direct links. The UI can show product cards with links. " +
+          "If products exist, keep product text short because the cards will appear below.",
       },
     ];
 
     if (faqContext) {
       messages.push({
         role: "system",
-        content: `Relevant FAQ / store knowledge:\n\n${faqContext}`,
+        content: `Relevant FAQ/store context:\n\n${faqContext}`,
       });
     }
 
@@ -226,9 +306,9 @@ export default async function handler(req, res) {
     }
 
     let productHint = "";
-    if (isProductIntent && kb.products.length > 0) {
-      productHint = kb.products.map((p, idx) => {
-        return `${idx + 1}. ${p.title} | model: ${p.model || "N/A"} | price: ${p.price || "N/A"}`;
+    if (kb.products.length > 0) {
+      productHint = kb.products.map((p, i) => {
+        return `${i + 1}. ${p.title} | model: ${p.model || "N/A"} | price: ${p.price || "N/A"} | url: ${p.url}`;
       }).join("\n");
     }
 
@@ -236,30 +316,34 @@ export default async function handler(req, res) {
       role: "user",
       content:
         `Customer message: ${userMessage}\n` +
-        (languageRequest ? `Preferred language for this reply: ${languageRequest}\n` : "") +
-        (productHint ? `Matching in-stock products found:\n${productHint}\n` : "") +
+        (languagePreference ? `Preferred language for this reply: ${languagePreference}\n` : "") +
+        (productHint ? `Matching in-stock products:\n${productHint}\n` : "") +
         `Reply rules:
-- Keep answer under 120 words.
-- If policy/store question: answer directly from FAQ context.
-- If product inquiry: answer naturally, then the UI may show product cards.
-- If there are no matching products, ask one short clarifying question instead of guessing.`,
+- Keep reply under 100 words.
+- If this is a store policy / shipping / warranty question, answer from FAQ context only.
+- If matching products exist, say you found some relevant options and keep the answer brief.
+- Do not say "I can't send direct links."
+- If no matching products exist for a product inquiry, ask one short clarifying question instead of forcing an unrelated recommendation.
+- Stay in English unless the user explicitly asks another language.`,
     });
 
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || "gpt-4o-mini",
       temperature: 0.2,
-      max_tokens: 260,
+      max_tokens: 220,
       messages,
     });
 
-    const responseText = completion.choices?.[0]?.message?.content?.trim() ||
-      "I’m here to help. Could you tell me a bit more about what you’re looking for?";
+    const responseText =
+      completion.choices?.[0]?.message?.content?.trim() ||
+      "I’m happy to help. Could you tell me a bit more about what you’re looking for?";
 
     return res.status(200).json({
       response: responseText,
-      products: isProductIntent ? kb.products.slice(0, 3) : [],
+      products: isProductIntent ? kb.products : [],
       meta: {
-        productsCount: isProductIntent ? kb.products.slice(0, 3).length : 0,
+        productsCount: isProductIntent ? kb.products.length : 0,
+        faqCount: kb.faqs.length,
       },
     });
   } catch (error) {

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 
 function formatTime(value) {
   try {
-    const d = value ? new Date(value) : new Date();
+    if (!value) return "";
+    const d = new Date(value);
     if (Number.isNaN(d.getTime())) return "";
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   } catch {
@@ -17,26 +18,32 @@ function ProductCard({ product }) {
   const image = product.image || product.image_url || "";
   const price = product.price ?? "";
   const model = product.model || product.product_id || "";
-  const url = product.url || (product.handle ? `https://www.cyberhome.app/products/${product.handle}` : "#");
+  const url =
+    product.url ||
+    (product.handle ? `https://www.cyberhome.app/products/${product.handle}` : "#");
 
   return (
-    <div style={{
-      border: "1px solid #e5e7eb",
-      borderRadius: 16,
-      padding: 16,
-      marginTop: 12,
-      display: "flex",
-      gap: 16,
-      background: "#fff"
-    }}>
-      <div style={{
-        width: 96,
-        height: 96,
-        borderRadius: 12,
-        overflow: "hidden",
-        background: "#f3f4f6",
-        flexShrink: 0
-      }}>
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 16,
+        padding: 16,
+        marginTop: 12,
+        display: "flex",
+        gap: 16,
+        background: "#fff",
+      }}
+    >
+      <div
+        style={{
+          width: 96,
+          height: 96,
+          borderRadius: 12,
+          overflow: "hidden",
+          background: "#f3f4f6",
+          flexShrink: 0,
+        }}
+      >
         {image ? (
           <img
             src={image}
@@ -47,7 +54,14 @@ function ProductCard({ product }) {
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.35, marginBottom: 6 }}>
+        <div
+          style={{
+            fontWeight: 700,
+            fontSize: 18,
+            lineHeight: 1.35,
+            marginBottom: 6,
+          }}
+        >
           {title}
         </div>
 
@@ -58,7 +72,14 @@ function ProductCard({ product }) {
         ) : null}
 
         {price !== "" ? (
-          <div style={{ fontSize: 16, color: "#d97706", fontWeight: 700, marginBottom: 12 }}>
+          <div
+            style={{
+              fontSize: 16,
+              color: "#d97706",
+              fontWeight: 700,
+              marginBottom: 12,
+            }}
+          >
             {price}
           </div>
         ) : null}
@@ -74,26 +95,10 @@ function ProductCard({ product }) {
               padding: "10px 16px",
               borderRadius: 12,
               textDecoration: "none",
-              fontWeight: 600
+              fontWeight: 600,
             }}
           >
             View Details
-          </a>
-
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              background: "#10b981",
-              color: "#fff",
-              padding: "10px 16px",
-              borderRadius: 12,
-              textDecoration: "none",
-              fontWeight: 600
-            }}
-          >
-            Add to Cart
           </a>
         </div>
       </div>
@@ -102,18 +107,24 @@ function ProductCard({ product }) {
 }
 
 export default function SimpleChat() {
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      role: "assistant",
-      content: "Welcome to CyberHome Support! How can we help you today?",
-      createdAt: new Date().toISOString(),
-      products: [],
-    },
-  ]);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const bottomRef = useRef(null);
+
+  useEffect(() => {
+    setMounted(true);
+    setMessages([
+      {
+        id: 1,
+        role: "assistant",
+        content: "Welcome to CyberHome Support! How can we help you today?",
+        createdAt: new Date().toISOString(),
+        products: [],
+      },
+    ]);
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -182,81 +193,102 @@ export default function SimpleChat() {
     }
   }
 
+  if (!mounted) return null;
+
   return (
-    <div style={{
-      maxWidth: 1080,
-      margin: "24px auto",
-      background: "#f9fafb",
-      borderRadius: 18,
-      overflow: "hidden",
-      border: "1px solid #e5e7eb"
-    }}>
-      <div style={{
-        background: "#171717",
-        color: "#fff",
-        padding: "18px 22px",
-        fontWeight: 700,
-        fontSize: 18
-      }}>
+    <div
+      style={{
+        maxWidth: 1080,
+        margin: "24px auto",
+        background: "#f9fafb",
+        borderRadius: 18,
+        overflow: "hidden",
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      <div
+        style={{
+          background: "#171717",
+          color: "#fff",
+          padding: "18px 22px",
+          fontWeight: 700,
+          fontSize: 18,
+        }}
+      >
         CyberHome Support
       </div>
 
-      <div style={{
-        padding: 20,
-        minHeight: 620,
-        maxHeight: 760,
-        overflowY: "auto",
-        background: "#ededed"
-      }}>
+      <div
+        style={{
+          padding: 20,
+          minHeight: 620,
+          maxHeight: 760,
+          overflowY: "auto",
+          background: "#ededed",
+        }}
+      >
         {messages.map((msg) => (
           <div key={msg.id} style={{ marginBottom: 24 }}>
-            <div style={{
-              display: "flex",
-              justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
-              gap: 10
-            }}>
-              <div style={{
-                maxWidth: "82%",
-                background: msg.role === "user" ? "#2196f3" : "#fff",
-                color: msg.role === "user" ? "#fff" : "#1f2937",
-                padding: "14px 16px",
-                borderRadius: 18,
-                fontSize: 16,
-                lineHeight: 1.5,
-                boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                whiteSpace: "pre-wrap"
-              }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  maxWidth: "82%",
+                  background: msg.role === "user" ? "#2196f3" : "#fff",
+                  color: msg.role === "user" ? "#fff" : "#1f2937",
+                  padding: "14px 16px",
+                  borderRadius: 18,
+                  fontSize: 16,
+                  lineHeight: 1.5,
+                  boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
                 {msg.content}
               </div>
             </div>
 
-            <div style={{
-              fontSize: 12,
-              color: "#9ca3af",
-              marginTop: 6,
-              paddingLeft: msg.role === "assistant" ? 8 : 0,
-              textAlign: msg.role === "user" ? "right" : "left"
-            }}>
+            <div
+              style={{
+                fontSize: 12,
+                color: "#9ca3af",
+                marginTop: 6,
+                paddingLeft: msg.role === "assistant" ? 8 : 0,
+                textAlign: msg.role === "user" ? "right" : "left",
+              }}
+            >
               {formatTime(msg.createdAt)}
             </div>
 
-            {msg.role === "assistant" && Array.isArray(msg.products) && msg.products.length > 0 ? (
+            {msg.role === "assistant" &&
+            Array.isArray(msg.products) &&
+            msg.products.length > 0 ? (
               <div style={{ marginTop: 10 }}>
-                <div style={{
-                  display: "inline-block",
-                  background: "#dcfce7",
-                  color: "#15803d",
-                  padding: "4px 10px",
-                  borderRadius: 999,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  marginBottom: 8
-                }}>
+                <div
+                  style={{
+                    display: "inline-block",
+                    background: "#dcfce7",
+                    color: "#15803d",
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginBottom: 8,
+                  }}
+                >
                   Products Available
                 </div>
 
                 {msg.products.map((product, idx) => (
-                  <ProductCard key={product.id || product.handle || idx} product={product} />
+                  <ProductCard
+                    key={product?.id || product?.handle || idx}
+                    product={product}
+                  />
                 ))}
               </div>
             ) : null}
@@ -270,11 +302,13 @@ export default function SimpleChat() {
         <div ref={bottomRef} />
       </div>
 
-      <div style={{
-        padding: 16,
-        background: "#f3f4f6",
-        borderTop: "1px solid #e5e7eb"
-      }}>
+      <div
+        style={{
+          padding: 16,
+          background: "#f3f4f6",
+          borderTop: "1px solid #e5e7eb",
+        }}
+      >
         <div style={{ display: "flex", gap: 12 }}>
           <textarea
             value={input}
@@ -290,7 +324,7 @@ export default function SimpleChat() {
               border: "1px solid #d1d5db",
               padding: "14px 16px",
               fontSize: 16,
-              outline: "none"
+              outline: "none",
             }}
           />
           <button
@@ -304,19 +338,21 @@ export default function SimpleChat() {
               background: loading ? "#d1d5db" : "#9ca3af",
               color: "#fff",
               fontSize: 18,
-              cursor: loading ? "not-allowed" : "pointer"
+              cursor: loading ? "not-allowed" : "pointer",
             }}
           >
             ↑
           </button>
         </div>
 
-        <div style={{
-          textAlign: "center",
-          color: "#9ca3af",
-          fontSize: 12,
-          marginTop: 8
-        }}>
+        <div
+          style={{
+            textAlign: "center",
+            color: "#9ca3af",
+            fontSize: 12,
+            marginTop: 8,
+          }}
+        >
           Enter to send
         </div>
       </div>
