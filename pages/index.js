@@ -1,6 +1,6 @@
-import dynamic from 'next/dynamic';
+import dynamic from "next/dynamic";
 
-const SimpleChat = dynamic(() => import('../components/SimpleChat'), {
+const SimpleChat = dynamic(() => import("../components/SimpleChat"), {
   ssr: false,
 });
 
