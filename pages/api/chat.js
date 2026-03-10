@@ -17,7 +17,7 @@ if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
 // =========================
-// CyberHome AI Support V4.2 Fixed
+// CyberHome AI Support V5
 // =========================
 
 const rateMap = new Map();
@@ -566,7 +566,6 @@ function familyMatch(product, family) {
     return (
       haystack.includes("rice roll") ||
       haystack.includes("rice noodle roll") ||
-      haystack.includes("rice noodle") ||
       haystack.includes("cheung fun") ||
       haystack.includes("cheong fun") ||
       haystack.includes("cheong-fun")
@@ -840,10 +839,7 @@ function scoreProduct(product, userMessage, history = []) {
     score += 14;
   }
 
-  if (
-    (q.includes("kettle") || q.includes("养生壶")) &&
-    !haystack.includes("kettle")
-  ) {
+  if ((q.includes("kettle") || q.includes("养生壶")) && !haystack.includes("kettle")) {
     score -= 14;
   }
 
@@ -944,6 +940,82 @@ function summarizeFaqs(faqs) {
     .join("\n\n");
 }
 
+function fallbackTextByLanguage(lang = "en") {
+  switch (lang) {
+    case "zh":
+      return "作为 AI 助手，我暂时无法准确回答这个问题。请留下你的邮箱，我们的同事会尽快联系你。";
+    case "es":
+      return "Como asistente de IA, no puedo responder esta pregunta con precisión por ahora. Por favor, deje su correo electrónico y un miembro de nuestro equipo le responderá pronto.";
+    case "de":
+      return "Als KI-Assistent kann ich diese Frage im Moment nicht zuverlässig beantworten. Bitte hinterlassen Sie Ihre E-Mail-Adresse, und ein Kollege wird sich bald bei Ihnen melden.";
+    case "fr":
+      return "En tant qu’assistant IA, je ne peux pas répondre précisément à cette question pour le moment. Veuillez laisser votre e-mail et un collègue vous répondra bientôt.";
+    default:
+      return "As an AI assistant, I can't answer this question accurately right now. Please leave your email and our colleague will reply soon.";
+  }
+}
+
+function buildFallbackResponse(lang, reason, extra = {}) {
+  return {
+    response: fallbackTextByLanguage(lang),
+    products: [],
+    meta: {
+      productsCount: 0,
+      faqCount: 0,
+      showContactForm: true,
+      fallbackTriggered: true,
+      handoffToHuman: true,
+      reason,
+      ...extra,
+    },
+  };
+}
+
+function shouldForceFallback({
+  userMessage,
+  productIntent,
+  policyIntent,
+  kb,
+  aiText,
+}) {
+  const text = normalizeText(aiText);
+
+  const noFaq = !Array.isArray(kb?.faqs) || kb.faqs.length === 0;
+  const noProducts = !Array.isArray(kb?.products) || kb.products.length === 0;
+
+  const vaguePatterns = [
+    "i'm happy to help",
+    "please tell me a bit more",
+    "could you clarify",
+    "can you clarify",
+    "please clarify",
+    "tell me more",
+    "not sure",
+    "i do not know",
+    "i don't know",
+  ];
+
+  const vagueHit = vaguePatterns.some((p) => text.includes(p));
+
+  if (policyIntent && noFaq) {
+    return { fallback: true, reason: "no_policy_answer" };
+  }
+
+  if (productIntent && noProducts) {
+    return { fallback: true, reason: "no_product_match" };
+  }
+
+  if (!productIntent && !policyIntent && noFaq && noProducts) {
+    return { fallback: true, reason: "no_answer" };
+  }
+
+  if ((noFaq && noProducts) || vagueHit) {
+    return { fallback: true, reason: "low_confidence_answer" };
+  }
+
+  return { fallback: false, reason: "" };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -951,28 +1023,44 @@ export default async function handler(req, res) {
 
   try {
     const clientIP = getClientIP(req);
-    const { message, history = [] } = req.body || {};
+    const { message, history = [], sessionId = "" } = req.body || {};
     const userMessage = String(message || "").trim();
 
     if (!userMessage) {
       return res.status(400).json({ error: "Missing message" });
     }
 
+    const latestLanguage = detectLanguage(userMessage, history);
+
     if (!checkRateLimit(clientIP)) {
       return res.status(200).json({
         response:
-          "You're sending messages too quickly. Please wait a moment and try again.",
+          latestLanguage === "zh"
+            ? "你发送消息太快了，请稍后再试。"
+            : "You're sending messages too quickly. Please wait a moment and try again.",
         products: [],
-        meta: { blocked: true, reason: "rate_limit", productsCount: 0 },
+        meta: {
+          blocked: true,
+          reason: "rate_limit",
+          productsCount: 0,
+          sessionId,
+        },
       });
     }
 
     if (isTooLong(userMessage)) {
       return res.status(200).json({
         response:
-          "Please keep your message under 500 characters so I can help more accurately.",
+          latestLanguage === "zh"
+            ? "请将消息控制在 500 个字符以内，这样我可以更准确地帮助你。"
+            : "Please keep your message under 500 characters so I can help more accurately.",
         products: [],
-        meta: { blocked: true, reason: "message_too_long", productsCount: 0 },
+        meta: {
+          blocked: true,
+          reason: "message_too_long",
+          productsCount: 0,
+          sessionId,
+        },
       });
     }
 
@@ -980,12 +1068,15 @@ export default async function handler(req, res) {
     if (abuse.blocked) {
       return res.status(200).json({
         response:
-          "I'm here to help with CyberHome products, shipping, warranty, and store-related questions. Please ask a product or store support question.",
+          latestLanguage === "zh"
+            ? "我可以协助解答 CyberHome 产品、发货、保修和店铺相关问题。请告诉我你的产品或售前售后问题。"
+            : "I'm here to help with CyberHome products, shipping, warranty, and store-related questions. Please ask a product or store support question.",
         products: [],
         meta: {
           blocked: true,
           reason: abuse.injectionHit ? "prompt_injection" : "non_business_abuse",
           productsCount: 0,
+          sessionId,
         },
       });
     }
@@ -993,26 +1084,27 @@ export default async function handler(req, res) {
     if (!isBusinessRelevant(userMessage, history)) {
       return res.status(200).json({
         response:
-          "I'm here to help with CyberHome products, shipping, warranty, orders, compatibility, manuals, and store policies. What can I help you with today?",
+          latestLanguage === "zh"
+            ? "我可以协助解答 CyberHome 产品、发货、保修、订单、兼容性、说明书和店铺政策相关问题。请告诉我你需要什么帮助。"
+            : "I'm here to help with CyberHome products, shipping, warranty, orders, compatibility, manuals, and store policies. What can I help you with today?",
         products: [],
         meta: {
           blocked: true,
           reason: "non_business_query",
           productsCount: 0,
+          sessionId,
         },
       });
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return res.status(200).json({
-        response:
-          "The assistant is not fully configured yet. Please contact support@cyberhome.app for assistance.",
-        products: [],
-        meta: { productsCount: 0 },
-      });
+      return res.status(200).json(
+        buildFallbackResponse(latestLanguage, "openai_not_configured", {
+          sessionId,
+        })
+      );
     }
 
-    const latestLanguage = detectLanguage(userMessage, history);
     const { productIntent, policyIntent } = detectIntent(userMessage, history);
     const followUp = isFollowUpMessage(userMessage);
 
@@ -1021,6 +1113,19 @@ export default async function handler(req, res) {
       kb = await searchKnowledge(userMessage, history);
     } catch (err) {
       console.error("Knowledge search failed:", err);
+    }
+
+    if (
+      (!kb.faqs || kb.faqs.length === 0) &&
+      (!kb.products || kb.products.length === 0)
+    ) {
+      return res.status(200).json(
+        buildFallbackResponse(latestLanguage, "no_search_result", {
+          sessionId,
+          productIntent,
+          policyIntent,
+        })
+      );
     }
 
     const faqContext = summarizeFaqs(kb.faqs);
@@ -1049,7 +1154,9 @@ export default async function handler(req, res) {
           "Do not include any raw URL in the reply. " +
           "Only mention product cards if product cards will actually appear in this response. " +
           "If no product cards will be shown, do not refer to cards below. " +
-          "If this is a follow-up question, use conversation context naturally.",
+          "If this is a follow-up question, use conversation context naturally. " +
+          "If the answer is uncertain, ask one short clarifying question. " +
+          "Never claim a store policy unless it is supported by FAQ context.",
       },
     ];
 
@@ -1110,25 +1217,66 @@ export default async function handler(req, res) {
       completion.choices?.[0]?.message?.content?.trim() ||
       "I'm happy to help. Please tell me a bit more about what you're looking for.";
 
+    const usage = completion?.usage || {};
+    const inputTokens = Number(usage.prompt_tokens || 0);
+    const outputTokens = Number(usage.completion_tokens || 0);
+    const totalTokens = Number(usage.total_tokens || inputTokens + outputTokens);
+
+    const fallbackCheck = shouldForceFallback({
+      userMessage,
+      productIntent,
+      policyIntent,
+      kb,
+      aiText: responseText,
+    });
+
+    if (fallbackCheck.fallback) {
+      return res.status(200).json(
+        buildFallbackResponse(latestLanguage, fallbackCheck.reason, {
+          sessionId,
+          productIntent,
+          policyIntent,
+          latestLanguage,
+          inputTokens,
+          outputTokens,
+          totalTokens,
+        })
+      );
+    }
+
     return res.status(200).json({
       response: responseText,
       products: shouldReturnProducts ? kb.products : [],
       meta: {
+        sessionId,
         productsCount: shouldReturnProducts ? kb.products.length : 0,
         faqCount: kb.faqs.length,
         policyIntent,
         productIntent,
         latestLanguage,
-        productSignature: currentProductSignature,
+        productSignature: shouldReturnProducts ? currentProductSignature : "",
+        showContactForm: false,
+        fallbackTriggered: false,
+        handoffToHuman: false,
+        inputTokens,
+        outputTokens,
+        totalTokens,
       },
     });
   } catch (error) {
     console.error("Chat API error:", error);
+
     return res.status(200).json({
       response:
-        "Sorry, the service is temporarily unavailable. Please try again in a moment.",
+        "Sorry, the service is temporarily unavailable. Please leave your email and our colleague will follow up soon.",
       products: [],
-      meta: { productsCount: 0 },
+      meta: {
+        productsCount: 0,
+        showContactForm: true,
+        fallbackTriggered: true,
+        handoffToHuman: true,
+        reason: "server_error",
+      },
     });
   }
 }
