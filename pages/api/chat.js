@@ -17,7 +17,7 @@ if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
 // =========================
-// CyberHome AI Support V4
+// CyberHome AI Support V4.2
 // =========================
 
 const rateMap = new Map();
@@ -110,6 +110,7 @@ const STOPWORDS = new Set([
   "let",
   "lets",
   "speak",
+  "any",
 ]);
 
 function tokenize(text) {
@@ -185,6 +186,7 @@ function detectAbuseIntent(text) {
 
 function isBusinessRelevant(text, history = []) {
   const q = String(text || "").toLowerCase();
+
   const businessKeywords = [
     "product",
     "products",
@@ -222,6 +224,12 @@ function isBusinessRelevant(text, history = []) {
     "manual",
     "kettle",
     "health kettle",
+    "tea kettle",
+    "promotion",
+    "discount",
+    "coupon",
+    "sale",
+    "deal",
     "酸奶",
     "酸奶机",
     "电饭煲",
@@ -245,6 +253,10 @@ function isBusinessRelevant(text, history = []) {
     "墨西哥",
     "水壶",
     "养生壶",
+    "促销",
+    "优惠",
+    "折扣",
+    "活动",
   ];
 
   if (businessKeywords.some((k) => q.includes(k))) return true;
@@ -282,8 +294,12 @@ function normalizeProduct(p) {
 
 function hasReliableStockField(products) {
   if (!Array.isArray(products) || products.length === 0) return false;
+
   return products.some((p) => {
-    const s = normalizeText(p.stock_status || p.stockStatus || "");
+    const s = normalizeText(p.stock_status || p.stockStatus || "").replace(
+      /[\s\-]/g,
+      "_"
+    );
     return [
       "in_stock",
       "out_of_stock",
@@ -358,14 +374,59 @@ function isFollowUpMessage(userMessage) {
   );
 }
 
+function shouldInheritProductContext(userMessage) {
+  const q = normalizeText(userMessage);
+
+  if (
+    /(promotion|discount|coupon|sale|deal|shipping|ship|delivery|warranty|return|refund|policy|contact|email|support|mexico|canada|voltage|manual|说明书|发货|配送|保修|退货|退款|政策|促销|优惠|折扣|活动|加拿大|墨西哥)/i.test(
+      q
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    q.length <= 40 &&
+    /(what about|how about|this one|that one|jar|glass jar|lid|parts|accessory|manual|more|another|还有吗|这个呢|那这个|配件|玻璃杯|玻璃罐)/i.test(
+      q
+    )
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function buildProductSignature(products = []) {
+  if (!Array.isArray(products) || products.length === 0) return "";
+  return products
+    .map((p) => p.handle || p.id || p.title || "")
+    .filter(Boolean)
+    .join("|");
+}
+
+function getLastAssistantProductSignature(history = []) {
+  if (!Array.isArray(history)) return "";
+  for (let i = history.length - 1; i >= 0; i--) {
+    const item = history[i];
+    if (item?.role === "assistant" && item?.meta?.productSignature) {
+      return item.meta.productSignature;
+    }
+  }
+  return "";
+}
+
 function detectProductFamily(text, history = []) {
-  const q = `${normalizeText(text)} ${extractRecentContext(history)}`;
+  const q = `${normalizeText(text)} ${
+    shouldInheritProductContext(text) ? extractRecentContext(history) : ""
+  }`.trim();
 
   if (
     q.includes("health kettle") ||
     q.includes("养生壶") ||
     q.includes("kettle") ||
-    q.includes("water kettle")
+    q.includes("water kettle") ||
+    q.includes("tea kettle")
   ) {
     return "kettle";
   }
@@ -396,11 +457,13 @@ function detectProductFamily(text, history = []) {
   if (q.includes("rice cooker") || q.includes("电饭煲") || q.includes("煮饭")) {
     return "rice_cooker";
   }
+
   if (q.includes("blender") || q.includes("搅拌机")) return "blender";
   if (q.includes("air fryer")) return "air_fryer";
   if (q.includes("humidifier")) return "humidifier";
   if (q.includes("sterilizer")) return "sterilizer";
   if (q.includes("baby food") || q.includes("辅食")) return "baby_food_maker";
+
   if (
     q.includes("dough maker") ||
     q.includes("dough mixer") ||
@@ -408,81 +471,129 @@ function detectProductFamily(text, history = []) {
   ) {
     return "dough_maker";
   }
+
   if (q.includes("soymilk") || q.includes("豆浆")) return "soymilk_maker";
   if (q.includes("bean sprouts") || q.includes("豆芽")) {
     return "bean_sprouts_machine";
   }
+
   if (q.includes("manual") || q.includes("说明书")) return "manual_request";
 
   return null;
 }
 
 function familyMatch(product, family) {
-  const haystack = normalizeText(
-    [
-      product.title,
-      product.handle,
-      product.model,
-      product.product_type,
-      product.category,
-      product.short_description,
-      Array.isArray(product.tags) ? product.tags.join(" ") : "",
-    ].join(" ")
-  );
-
   if (!family) return true;
+
+  const text = (
+    (product.title || "") +
+    " " +
+    (product.product_type || "") +
+    " " +
+    (product.category || "") +
+    " " +
+    (product.handle || "") +
+    " " +
+    (product.short_description || "")
+  ).toLowerCase();
 
   if (family === "kettle") {
     return (
-      haystack.includes("kettle") ||
-      haystack.includes("养生壶") ||
-      haystack.includes("water kettle")
+      text.includes("kettle") ||
+      text.includes("养生壶") ||
+      text.includes("water kettle")
     );
   }
+
   if (family === "yogurt_maker") {
-    return haystack.includes("yogurt") && !haystack.includes("soymilk") && !haystack.includes("bean sprouts");
+    return (
+      text.includes("yogurt") &&
+      !text.includes("jar") &&
+      !text.includes("glass") &&
+      !text.includes("replacement") &&
+      !text.includes("parts") &&
+      !text.includes("lid")
+    );
   }
+
   if (family === "yogurt_accessory") {
     return (
-      (haystack.includes("yogurt") &&
-        (haystack.includes("jar") || haystack.includes("glass"))) ||
-      haystack.includes("replacement parts")
+      (text.includes("yogurt") &&
+        (text.includes("jar") ||
+          text.includes("glass") ||
+          text.includes("lid"))) ||
+      text.includes("replacement parts")
     );
   }
+
+  if (family === "accessory") {
+    return (
+      text.includes("jar") ||
+      text.includes("glass") ||
+      text.includes("lid") ||
+      text.includes("replacement") ||
+      text.includes("parts") ||
+      text.includes("accessory")
+    );
+  }
+
+  if (family === "rice_cooker") {
+    return text.includes("rice cooker");
+  }
+
   if (family === "rice_roll_steamer") {
     return (
-      haystack.includes("rice roll") ||
-      haystack.includes("cheung fun") ||
-      haystack.includes("cheong fun") ||
-      haystack.includes("rice noodle roll") ||
-      haystack.includes("rice noodle") ||
-      haystack.includes("cheong-fun")
+      text.includes("rice roll") ||
+      text.includes("rice noodle roll") ||
+      text.includes("rice noodle") ||
+      text.includes("cheung fun") ||
+      text.includes("cheong fun") ||
+      text.includes("cheong-fun")
     );
   }
-  if (family === "rice_cooker") return haystack.includes("rice cooker");
-  if (family === "blender") return haystack.includes("blender") && !haystack.includes("baby food");
-  if (family === "baby_food_maker") return haystack.includes("baby food");
-  if (family === "dough_maker") {
-    return haystack.includes("dough maker") || haystack.includes("dough mixer");
+
+  if (family === "blender") {
+    return text.includes("blender") && !text.includes("baby food");
   }
-  if (family === "soymilk_maker") return haystack.includes("soymilk");
-  if (family === "bean_sprouts_machine") return haystack.includes("bean sprouts");
-  if (family === "manual_request") return true;
+
+  if (family === "baby_food_maker") {
+    return text.includes("baby food");
+  }
+
+  if (family === "dough_maker") {
+    return text.includes("dough maker") || text.includes("dough mixer");
+  }
+
+  if (family === "soymilk_maker") {
+    return text.includes("soymilk");
+  }
+
+  if (family === "bean_sprouts_machine") {
+    return text.includes("bean sprouts");
+  }
+
+  if (family === "manual_request") {
+    return false;
+  }
 
   return true;
 }
 
 function detectIntent(userMessage, history = []) {
-  const q = `${normalizeText(userMessage)} ${extractRecentContext(history)}`;
+  const current = normalizeText(userMessage);
+  const recent = shouldInheritProductContext(userMessage)
+    ? extractRecentContext(history)
+    : "";
+  const q = `${current} ${recent}`.trim();
 
   const productIntent =
-    /(looking for|do you have|recommend|compare|which one|best|model|show me|rice cooker|yogurt|steamer|cheung fun|cheong fun|blender|air fryer|humidifier|sterilizer|dough maker|jar|parts|manual|kettle|health kettle|酸奶|电饭煲|肠粉|说明书|配件|玻璃罐|养生壶|水壶|有吗|推荐)/i.test(
+    /(looking for|do you have|recommend|compare|which one|best|model|show me|rice cooker|yogurt|steamer|cheung fun|cheong fun|blender|air fryer|humidifier|sterilizer|dough maker|jar|parts|manual|kettle|health kettle|tea kettle|酸奶|电饭煲|肠粉|说明书|配件|玻璃罐|养生壶|水壶|有吗|推荐)/i.test(
       q
     );
 
   const policyIntent =
-    /(shipping|ship|delivery|warranty|return|refund|voltage|canada|mexico|policy|support|contact|about us|发货|配送|加拿大|墨西哥|保修|退货|退款|电压)/i.test(
-      q
+    /(shipping|ship|delivery|warranty|return|refund|voltage|canada|mexico|policy|support|contact|about us|promotion|discount|coupon|sale|deal|发货|配送|加拿大|墨西哥|保修|退货|退款|电压|优惠|折扣|促销|活动)/i.test(
+      current
     );
 
   return { productIntent, policyIntent };
@@ -490,19 +601,28 @@ function detectIntent(userMessage, history = []) {
 
 function buildSearchQueries(userMessage, history = []) {
   const q = normalizeText(userMessage);
-  const context = extractRecentContext(history);
-  const combined = `${q} ${context}`;
+  const context = shouldInheritProductContext(userMessage)
+    ? extractRecentContext(history)
+    : "";
+  const combined = `${q} ${context}`.trim();
   const queries = [userMessage];
 
   if (combined.includes("health kettle") || combined.includes("养生壶")) {
     queries.push("health kettle", "kettle", "养生壶");
   }
+
+  if (combined.includes("tea kettle")) {
+    queries.push("tea kettle", "kettle");
+  }
+
   if (combined.includes("kettle")) {
     queries.push("kettle");
   }
+
   if (combined.includes("yogurt") || combined.includes("酸奶")) {
     queries.push("yogurt maker", "greek yogurt maker");
   }
+
   if (
     combined.includes("glass jar") ||
     combined.includes("jar") ||
@@ -511,6 +631,7 @@ function buildSearchQueries(userMessage, history = []) {
   ) {
     queries.push("yogurt jar", "glass jar", "yogurt maker glass jar");
   }
+
   if (
     combined.includes("rice roll") ||
     combined.includes("cheung fun") ||
@@ -526,18 +647,23 @@ function buildSearchQueries(userMessage, history = []) {
       "cheong fun machine"
     );
   }
+
   if (combined.includes("rice cooker") || combined.includes("电饭煲")) {
     queries.push("rice cooker");
   }
+
   if (combined.includes("blender") || combined.includes("搅拌机")) {
     queries.push("blender");
   }
+
   if (combined.includes("air fryer")) queries.push("air fryer");
   if (combined.includes("humidifier")) queries.push("humidifier");
   if (combined.includes("sterilizer")) queries.push("sterilizer");
+
   if (combined.includes("baby food") || combined.includes("辅食")) {
     queries.push("baby food maker", "baby food processor");
   }
+
   if (
     combined.includes("dough maker") ||
     combined.includes("dough mixer") ||
@@ -545,9 +671,11 @@ function buildSearchQueries(userMessage, history = []) {
   ) {
     queries.push("dough maker", "dough mixer");
   }
+
   if (combined.includes("manual") || combined.includes("说明书")) {
     queries.push("manual", "user manual", "downloads");
   }
+
   if (
     combined.includes("replacement parts") ||
     combined.includes("parts") ||
@@ -555,9 +683,11 @@ function buildSearchQueries(userMessage, history = []) {
   ) {
     queries.push("replacement parts");
   }
+
   if (combined.includes("canada") || combined.includes("加拿大")) {
     queries.push("ship to canada");
   }
+
   if (combined.includes("mexico") || combined.includes("墨西哥")) {
     queries.push("ship to mexico");
   }
@@ -583,7 +713,7 @@ async function fetchWithTimeout(url, timeoutMs = 5000) {
 
 async function fetchSearch(query) {
   const url = `${FAQ_API_URL}/api/search?q=${encodeURIComponent(query)}`;
-  const response = await fetchWithTimeout(url, 5000);
+  const response = await fetchWithTimeout(url, timeoutMs = 5000);
 
   if (!response.ok) {
     throw new Error(`FAQ API HTTP ${response.status}`);
@@ -593,7 +723,10 @@ async function fetchSearch(query) {
 }
 
 function scoreProduct(product, userMessage, history = []) {
-  const q = `${normalizeText(userMessage)} ${extractRecentContext(history)}`;
+  const q = `${normalizeText(userMessage)} ${
+    shouldInheritProductContext(userMessage) ? extractRecentContext(history) : ""
+  }`.trim();
+
   const words = tokenize(userMessage);
 
   const haystack = normalizeText(
@@ -617,15 +750,18 @@ function scoreProduct(product, userMessage, history = []) {
   if ((q.includes("kettle") || q.includes("养生壶")) && haystack.includes("kettle")) {
     score += 18;
   }
+
   if ((q.includes("yogurt") || q.includes("酸奶")) && haystack.includes("yogurt")) {
     score += 15;
   }
+
   if (
     (q.includes("jar") || q.includes("glass") || q.includes("玻璃")) &&
     (haystack.includes("jar") || haystack.includes("glass"))
   ) {
     score += 12;
   }
+
   if ((q.includes("rice cooker") || q.includes("电饭煲")) && haystack.includes("rice cooker")) {
     score += 15;
   }
@@ -651,6 +787,7 @@ function scoreProduct(product, userMessage, history = []) {
   ) {
     score += 10;
   }
+
   if (
     (q.includes("dough maker") || q.includes("dough mixer") || q.includes("和面")) &&
     (haystack.includes("dough maker") || haystack.includes("dough mixer"))
@@ -661,9 +798,11 @@ function scoreProduct(product, userMessage, history = []) {
   if ((q.includes("kettle") || q.includes("养生壶")) && !haystack.includes("kettle")) {
     score -= 14;
   }
+
   if ((q.includes("yogurt") || q.includes("酸奶")) && !haystack.includes("yogurt")) {
     score -= 15;
   }
+
   if (
     (q.includes("rice roll") ||
       q.includes("cheung fun") ||
@@ -678,6 +817,7 @@ function scoreProduct(product, userMessage, history = []) {
   ) {
     score -= 18;
   }
+
   if ((q.includes("rice cooker") || q.includes("电饭煲")) && !haystack.includes("rice cooker")) {
     score -= 15;
   }
@@ -698,6 +838,7 @@ async function searchKnowledge(userMessage, history = []) {
 
   for (const result of results) {
     if (result.status !== "fulfilled") continue;
+
     const data = result.value || {};
     const faqMatches = Array.isArray(data.faqMatches) ? data.faqMatches : [];
     const productMatches = Array.isArray(data.productMatches)
@@ -715,7 +856,16 @@ async function searchKnowledge(userMessage, history = []) {
   normalizedProducts = dedupeProducts(normalizedProducts);
 
   const familyFiltered = normalizedProducts.filter((p) => familyMatch(p, family));
-  if (familyFiltered.length > 0) normalizedProducts = familyFiltered;
+  if (familyFiltered.length > 0) {
+    normalizedProducts = familyFiltered;
+  }
+
+  if (family === "manual_request") {
+    return {
+      faqs: allFaqs.slice(0, 8),
+      products: [],
+    };
+  }
 
   normalizedProducts = normalizedProducts
     .map((p) => ({ ...p, _score: scoreProduct(p, userMessage, history) }))
@@ -724,9 +874,7 @@ async function searchKnowledge(userMessage, history = []) {
   let rankedProducts = normalizedProducts.filter((p) => p._score >= 2);
   if (rankedProducts.length === 0) rankedProducts = normalizedProducts;
 
-  rankedProducts = rankedProducts
-    .slice(0, 3)
-    .map(({ _score, ...rest }) => rest);
+  rankedProducts = rankedProducts.slice(0, 3).map(({ _score, ...rest }) => rest);
 
   return {
     faqs: allFaqs.slice(0, 8),
@@ -825,7 +973,22 @@ export default async function handler(req, res) {
     }
 
     const faqContext = summarizeFaqs(kb.faqs);
-    const productCardsWillShow = Array.isArray(kb.products) && kb.products.length > 0;
+
+    const currentProductSignature = buildProductSignature(kb.products);
+    const lastProductSignature = getLastAssistantProductSignature(history);
+
+    const productCardsWillShow =
+      productIntent &&
+      !policyIntent &&
+      Array.isArray(kb.products) &&
+      kb.products.length > 0;
+
+    const shouldReturnProducts =
+      productIntent &&
+      !policyIntent &&
+      Array.isArray(kb.products) &&
+      kb.products.length > 0 &&
+      currentProductSignature !== lastProductSignature;
 
     const messages = [
       {
@@ -903,13 +1066,14 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       response: responseText,
-      products: kb.products || [],
+      products: shouldReturnProducts ? kb.products : [],
       meta: {
-        productsCount: kb.products.length,
+        productsCount: shouldReturnProducts ? kb.products.length : 0,
         faqCount: kb.faqs.length,
         policyIntent,
         productIntent,
         latestLanguage,
+        productSignature: currentProductSignature,
       },
     });
   } catch (error) {

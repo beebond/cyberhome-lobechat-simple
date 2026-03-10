@@ -122,6 +122,7 @@ export default function SimpleChat() {
         content: "Welcome to CyberHome Support! How can we help you today?",
         createdAt: new Date().toISOString(),
         products: [],
+        meta: {},
       },
     ]);
   }, []);
@@ -140,16 +141,21 @@ export default function SimpleChat() {
       content: text,
       createdAt: new Date().toISOString(),
       products: [],
+      meta: {},
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
     setInput("");
     setLoading(true);
 
     try {
-      const history = messages.map((m) => ({
+      // 关键修复：
+      // history 里要把 assistant 的 meta 一起传给后端
+      const history = nextMessages.map((m) => ({
         role: m.role,
         content: m.content,
+        meta: m.meta || {},
       }));
 
       const resp = await fetch("/api/chat", {
@@ -166,6 +172,7 @@ export default function SimpleChat() {
         content: data?.response || "Sorry, I could not generate a response.",
         createdAt: new Date().toISOString(),
         products: Array.isArray(data?.products) ? data.products : [],
+        meta: data?.meta || {},
       };
 
       setMessages((prev) => [...prev, aiMsg]);
@@ -179,6 +186,7 @@ export default function SimpleChat() {
           content: "Sorry, service temporarily unavailable. Please try again.",
           createdAt: new Date().toISOString(),
           products: [],
+          meta: {},
         },
       ]);
     } finally {
