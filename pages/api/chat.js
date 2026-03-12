@@ -17,8 +17,8 @@ if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
 // =========================
-// CyberHome AI Support V6.2
-// Direct-template-first edition
+// CyberHome AI Support V6.3
+// Direct-template-first + detail links
 // =========================
 
 const rateMap = new Map();
@@ -753,8 +753,10 @@ function scoreProduct(product, userMessage, history = []) {
     score -= 15;
   }
 
-  if ((q.includes("bottle warmer") || q.includes("milk warmer")) &&
-      !(haystack.includes("bottle warmer") || haystack.includes("milk warmer"))) {
+  if (
+    (q.includes("bottle warmer") || q.includes("milk warmer")) &&
+    !(haystack.includes("bottle warmer") || haystack.includes("milk warmer"))
+  ) {
     score -= 14;
   }
 
@@ -811,15 +813,8 @@ function getLocalizedLabel(lang, labels) {
 }
 
 function buildPolicyDirectResponse(policy, lang) {
-  const title = policy?.title || "";
   const answer = policy?.answer || policy?.content || "";
-
-  const suffix = getLocalizedLabel(lang, {
-    en: "For full details, please refer to our official policy page.",
-    zh: "如需完整细则，请以我们的官方页面为准。",
-  });
-
-  return `${answer} ${suffix}`.trim();
+  return answer.trim();
 }
 
 function buildBlogDirectResponse(blog, lang) {
@@ -831,12 +826,82 @@ function buildBlogDirectResponse(blog, lang) {
     zh: `以下是我们相关指南《${title}》的简要说明：`,
   });
 
-  const suffix = getLocalizedLabel(lang, {
-    en: "For the full guide, please read the related article on our site.",
-    zh: "如需完整步骤和说明，请查看我们网站上的相关文章。",
-  });
+  return `${intro} ${summary}`.trim();
+}
 
-  return `${intro} ${summary} ${suffix}`.trim();
+function getPolicyLinkLabel(policy, lang) {
+  const title = normalizeText(policy?.title || "");
+
+  if (title.includes("refund")) {
+    return getLocalizedLabel(lang, {
+      en: "View Refund Policy",
+      zh: "查看退款政策",
+    });
+  }
+
+  if (title.includes("contact")) {
+    return getLocalizedLabel(lang, {
+      en: "View Contact Information",
+      zh: "查看联系信息",
+    });
+  }
+
+  if (title.includes("terms")) {
+    return getLocalizedLabel(lang, {
+      en: "View Terms of Service",
+      zh: "查看服务条款",
+    });
+  }
+
+  if (title.includes("vip")) {
+    return getLocalizedLabel(lang, {
+      en: "View VIP Discount Page",
+      zh: "查看 VIP 优惠页面",
+    });
+  }
+
+  return getLocalizedLabel(lang, {
+    en: "View Policy",
+    zh: "查看政策页面",
+  });
+}
+
+function getBlogLinkLabel(blog, lang) {
+  const category = normalizeText(blog?.category || "");
+  const title = normalizeText(blog?.title || "");
+
+  if (category.includes("fermentation") || title.includes("fermentation")) {
+    return getLocalizedLabel(lang, {
+      en: "Read Fermentation Guide",
+      zh: "查看发酵指南",
+    });
+  }
+
+  if (category.includes("warm_drinks") || title.includes("warm drinks")) {
+    return getLocalizedLabel(lang, {
+      en: "Read Warm Drinks Guide",
+      zh: "查看温热饮品指南",
+    });
+  }
+
+  if (category.includes("gentle_cooking") || title.includes("gentle cooking")) {
+    return getLocalizedLabel(lang, {
+      en: "Read Gentle Cooking Guide",
+      zh: "查看轻烹饪指南",
+    });
+  }
+
+  if (title.includes("yogurt")) {
+    return getLocalizedLabel(lang, {
+      en: "Read Yogurt Guide",
+      zh: "查看酸奶指南",
+    });
+  }
+
+  return getLocalizedLabel(lang, {
+    en: "Read Full Guide",
+    zh: "查看完整指南",
+  });
 }
 
 function shouldDirectPolicyAnswer(userMessage, kb) {
@@ -844,8 +909,8 @@ function shouldDirectPolicyAnswer(userMessage, kb) {
   const top = kb?.policies?.[0];
   if (!top) return false;
 
-  return (
-    /refund|return|contact|shipping|delivery|warranty|vip|discount|terms|about us|policy|support|发货|退货|退款|保修|联系我们|政策|优惠|折扣|会员/.test(q)
+  return /refund|return|contact|shipping|delivery|warranty|vip|discount|terms|about us|policy|support|发货|退货|退款|保修|联系我们|政策|优惠|折扣|会员/.test(
+    q
   );
 }
 
@@ -855,10 +920,8 @@ function shouldDirectBlogAnswer(userMessage, kb, productIntent, policyIntent) {
   const top = kb?.blogs?.[0];
   if (!top) return false;
 
-  return (
-    /how to make yogurt|homemade yogurt|fermentation|warm drinks|gentle cooking|what is fermentation|what is gentle cooking|healthy warm drinks|如何做酸奶|发酵|温热饮品|轻烹饪/.test(
-      q
-    )
+  return /how to make yogurt|homemade yogurt|fermentation|warm drinks|gentle cooking|what is fermentation|what is gentle cooking|healthy warm drinks|如何做酸奶|发酵|温热饮品|轻烹饪/.test(
+    q
   );
 }
 
@@ -1146,13 +1209,16 @@ export default async function handler(req, res) {
     // Direct template answers first
     // =========================
     if (shouldDirectPolicyAnswer(userMessage, kb)) {
+      const policy = kb.policies[0];
       return res.status(200).json({
-        response: buildPolicyDirectResponse(kb.policies[0], latestLanguage),
+        response: buildPolicyDirectResponse(policy, latestLanguage),
         products: [],
         meta: {
           sessionId,
           directAnswer: true,
           source: "policy",
+          detailLink: policy?.url || "",
+          detailLinkLabel: getPolicyLinkLabel(policy, latestLanguage),
           productsCount: 0,
           faqCount: kb.faqs.length,
           policyCount: kb.policies.length,
@@ -1169,13 +1235,16 @@ export default async function handler(req, res) {
     }
 
     if (shouldDirectBlogAnswer(userMessage, kb, productIntent, policyIntent)) {
+      const blog = kb.blogs[0];
       return res.status(200).json({
-        response: buildBlogDirectResponse(kb.blogs[0], latestLanguage),
+        response: buildBlogDirectResponse(blog, latestLanguage),
         products: [],
         meta: {
           sessionId,
           directAnswer: true,
           source: "blog",
+          detailLink: blog?.url || "",
+          detailLinkLabel: getBlogLinkLabel(blog, latestLanguage),
           productsCount: 0,
           faqCount: kb.faqs.length,
           policyCount: kb.policies.length,
@@ -1321,10 +1390,18 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       response: responseText,
-      products: shouldReturnProducts ? (blogIntent ? kb.products.slice(0, 1) : kb.products.slice(0, 2)) : [],
+      products: shouldReturnProducts
+        ? blogIntent
+          ? kb.products.slice(0, 1)
+          : kb.products.slice(0, 2)
+        : [],
       meta: {
         sessionId,
-        productsCount: shouldReturnProducts ? (blogIntent ? Math.min(kb.products.length, 1) : Math.min(kb.products.length, 2)) : 0,
+        productsCount: shouldReturnProducts
+          ? blogIntent
+            ? Math.min(kb.products.length, 1)
+            : Math.min(kb.products.length, 2)
+          : 0,
         faqCount: kb.faqs.length,
         policyCount: kb.policies.length,
         blogCount: kb.blogs.length,
@@ -1333,6 +1410,9 @@ export default async function handler(req, res) {
         blogIntent,
         latestLanguage,
         productSignature: shouldReturnProducts ? currentProductSignature : "",
+        detailLink: "",
+        detailLinkLabel: "",
+        source: "ai",
         showContactForm: false,
         fallbackTriggered: false,
         handoffToHuman: false,
@@ -1353,6 +1433,8 @@ export default async function handler(req, res) {
         faqCount: 0,
         policyCount: 0,
         blogCount: 0,
+        detailLink: "",
+        detailLinkLabel: "",
         showContactForm: true,
         fallbackTriggered: true,
         handoffToHuman: true,
