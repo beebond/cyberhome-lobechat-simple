@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V6.5";
+const SIMPLECHAT_VERSION = "V6.6";
 const USER_AVATAR = "You";
 const ASSISTANT_AVATAR = "AI";
 const IDLE_TIMEOUT_MS = 60 * 1000;
@@ -95,6 +95,33 @@ function DetailLinkButton({ href, label }) {
   );
 }
 
+function MoreLinkButton({ href, label }) {
+  if (!href) return null;
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          display: "inline-block",
+          background: "#111827",
+          color: "#fff",
+          padding: "10px 16px",
+          borderRadius: 12,
+          textDecoration: "none",
+          fontWeight: 700,
+          fontSize: 14,
+          lineHeight: 1.2,
+        }}
+      >
+        {label || "More"}
+      </a>
+    </div>
+  );
+}
+
 function ProductCard({ product }) {
   if (!product) return null;
 
@@ -166,95 +193,28 @@ function ProductCard({ product }) {
           </div>
         ) : null}
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              background: "#2563eb",
-              color: "#fff",
-              padding: "10px 16px",
-              borderRadius: 12,
-              textDecoration: "none",
-              fontWeight: 600,
-            }}
-          >
-            View Details
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Modal({ open, title, children, onClose }) {
-  if (!open) return null;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 9999,
-        padding: 16,
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 560,
-          background: "#fff",
-          borderRadius: 20,
-          border: "1px solid #e5e7eb",
-          boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
-          overflow: "hidden",
-        }}
-      >
-        <div
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
           style={{
-            padding: "18px 20px",
-            borderBottom: "1px solid #e5e7eb",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
+            background: "#2563eb",
+            color: "#fff",
+            padding: "10px 16px",
+            borderRadius: 12,
+            textDecoration: "none",
+            fontWeight: 600,
+            display: "inline-block",
           }}
         >
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>
-            {title}
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              border: "1px solid #d1d5db",
-              background: "#fff",
-              color: "#374151",
-              width: 34,
-              height: 34,
-              borderRadius: 999,
-              cursor: "pointer",
-              fontSize: 18,
-              lineHeight: 1,
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        <div style={{ padding: 20 }}>{children}</div>
+          View Details
+        </a>
       </div>
     </div>
   );
 }
 
-function LeadForm({
+function InlineLeadForm({
   title,
   subtitle,
   submitting,
@@ -263,17 +223,28 @@ function LeadForm({
   form,
   onChange,
   onSubmit,
-  onClose,
+  onCancel,
 }) {
   return (
-    <div>
+    <div
+      style={{
+        marginTop: 12,
+        background: "#fff",
+        border: "1px solid #e5e7eb",
+        borderRadius: 16,
+        padding: 16,
+      }}
+    >
+      <div style={{ fontWeight: 700, fontSize: 18, color: "#111827" }}>{title}</div>
+
       {subtitle ? (
         <div
           style={{
             color: "#4b5563",
             fontSize: 14,
             lineHeight: 1.6,
-            marginBottom: 16,
+            marginTop: 8,
+            marginBottom: 14,
           }}
         >
           {subtitle}
@@ -282,14 +253,7 @@ function LeadForm({
 
       <div style={{ display: "grid", gap: 12 }}>
         <div>
-          <div
-            style={{
-              fontSize: 13,
-              color: "#374151",
-              fontWeight: 600,
-              marginBottom: 6,
-            }}
-          >
+          <div style={{ fontSize: 13, color: "#374151", fontWeight: 600, marginBottom: 6 }}>
             Name
           </div>
           <input
@@ -308,14 +272,7 @@ function LeadForm({
         </div>
 
         <div>
-          <div
-            style={{
-              fontSize: 13,
-              color: "#374151",
-              fontWeight: 600,
-              marginBottom: 6,
-            }}
-          >
+          <div style={{ fontSize: 13, color: "#374151", fontWeight: 600, marginBottom: 6 }}>
             Email
           </div>
           <input
@@ -335,14 +292,7 @@ function LeadForm({
         </div>
 
         <div>
-          <div
-            style={{
-              fontSize: 13,
-              color: "#374151",
-              fontWeight: 600,
-              marginBottom: 6,
-            }}
-          >
+          <div style={{ fontSize: 13, color: "#374151", fontWeight: 600, marginBottom: 6 }}>
             Message
           </div>
           <textarea
@@ -400,25 +350,28 @@ function LeadForm({
           display: "flex",
           gap: 10,
           justifyContent: "flex-end",
-          marginTop: 18,
+          marginTop: 16,
           flexWrap: "wrap",
         }}
       >
-        <button
-          onClick={onClose}
-          type="button"
-          style={{
-            border: "1px solid #d1d5db",
-            background: "#fff",
-            color: "#374151",
-            padding: "10px 16px",
-            borderRadius: 12,
-            cursor: "pointer",
-            fontWeight: 600,
-          }}
-        >
-          Cancel
-        </button>
+        {onCancel ? (
+          <button
+            onClick={onCancel}
+            type="button"
+            style={{
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              color: "#374151",
+              padding: "10px 16px",
+              borderRadius: 12,
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            Cancel
+          </button>
+        ) : null}
+
         <button
           onClick={onSubmit}
           disabled={submitting}
@@ -445,11 +398,8 @@ export default function SimpleChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
-
   const [sessionId] = useState(() => createSessionId());
 
-  const [leadFormOpen, setLeadFormOpen] = useState(false);
-  const [leadFormReason, setLeadFormReason] = useState("");
   const [leadSubmitting, setLeadSubmitting] = useState(false);
   const [leadSubmitted, setLeadSubmitted] = useState(false);
   const [leadError, setLeadError] = useState("");
@@ -484,29 +434,24 @@ export default function SimpleChat() {
   }, [messages, loading]);
 
   const transcriptForLead = useMemo(() => {
-    return messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-      createdAt: m.createdAt,
-      products: Array.isArray(m.products) ? m.products : [],
-      meta: m.meta || {},
-    }));
+    return messages
+      .filter((m) => m.type !== "lead_form")
+      .map((m) => ({
+        role: m.role,
+        content: m.content,
+        createdAt: m.createdAt,
+        products: Array.isArray(m.products) ? m.products : [],
+        meta: m.meta || {},
+      }));
   }, [messages]);
 
   function resetIdleTimer() {
-    if (idleTimerRef.current) {
-      clearTimeout(idleTimerRef.current);
-    }
-
-    if (!idlePromptEnabled || hasTriggeredIdleRef.current) return;
-    if (leadSubmitted) return;
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    if (!idlePromptEnabled || hasTriggeredIdleRef.current || leadSubmitted) return;
 
     idleTimerRef.current = setTimeout(() => {
       hasTriggeredIdleRef.current = true;
-      setLeadFormReason("idle_timeout");
-      setLeadError("");
-      setLeadSubmitted(false);
-      setLeadFormOpen(true);
+      injectLeadForm("idle_timeout");
     }, IDLE_TIMEOUT_MS);
   }
 
@@ -521,21 +466,40 @@ export default function SimpleChat() {
     resetIdleTimer();
   }
 
-  function openLeadForm(reason, presetNote = "") {
-    setLeadFormReason(reason || "manual");
+  function removeExistingLeadForms() {
+    setMessages((prev) => prev.filter((m) => m.type !== "lead_form"));
+  }
+
+  function injectLeadForm(reason, presetNote = "") {
+    removeExistingLeadForms();
     setLeadError("");
     setLeadSubmitted(false);
+
     if (presetNote) {
       setLeadForm((prev) => ({
         ...prev,
         note: prev.note || presetNote,
       }));
     }
-    setLeadFormOpen(true);
+
+    const formMessage = {
+      id: `lead_${Date.now()}`,
+      type: "lead_form",
+      role: "assistant",
+      content: "",
+      createdAt: new Date().toISOString(),
+      products: [],
+      meta: {
+        reason,
+        showInlineLeadForm: true,
+      },
+    };
+
+    setMessages((prev) => [...prev, formMessage]);
   }
 
-  function closeLeadForm() {
-    setLeadFormOpen(false);
+  function dismissLeadForm() {
+    removeExistingLeadForms();
   }
 
   function handleLeadFormChange(field, value) {
@@ -545,7 +509,7 @@ export default function SimpleChat() {
     }));
   }
 
-  async function submitLeadForm() {
+  async function submitLeadForm(reason = "manual") {
     const safeName = sanitizeLeadText(leadForm.name, 200);
     const safeEmail = normalizeEmail(leadForm.email);
     const safeNote = sanitizeLeadText(leadForm.note, 3000);
@@ -568,7 +532,7 @@ export default function SimpleChat() {
           email: safeEmail,
           note: safeNote,
           transcript: transcriptForLead,
-          source: `simplechat_${SIMPLECHAT_VERSION.toLowerCase().replace(/\./g, "_")}_${leadFormReason || "manual"}`,
+          source: `simplechat_${SIMPLECHAT_VERSION.toLowerCase().replace(/\./g, "_")}_${reason}`,
           submittedAt: new Date().toISOString(),
         }),
       });
@@ -581,11 +545,12 @@ export default function SimpleChat() {
 
       setLeadSubmitted(true);
       setIdlePromptEnabled(false);
+      removeExistingLeadForms();
 
       setMessages((prev) => [
         ...prev,
         {
-          id: Date.now() + 99,
+          id: `lead_success_${Date.now()}`,
           role: "assistant",
           content:
             "Thank you. Your contact information has been received, and our colleague will follow up soon.",
@@ -594,10 +559,6 @@ export default function SimpleChat() {
           meta: {},
         },
       ]);
-
-      setTimeout(() => {
-        setLeadFormOpen(false);
-      }, 900);
     } catch (error) {
       console.error("Lead submit error:", error);
       setLeadError("Sorry, we could not submit your message right now. Please try again.");
@@ -621,7 +582,7 @@ export default function SimpleChat() {
       meta: {},
     };
 
-    const nextMessages = [...messages, userMsg];
+    const nextMessages = [...messages.filter((m) => m.type !== "lead_form"), userMsg];
     setMessages(nextMessages);
     setInput("");
     setLoading(true);
@@ -650,27 +611,22 @@ export default function SimpleChat() {
         meta: data?.meta || {},
       };
 
-      setMessages((prev) => [...prev, aiMsg]);
+      setMessages((prev) => [...prev.filter((m) => m.type !== "lead_form"), aiMsg]);
 
       if (data?.meta?.showContactForm || data?.meta?.handoffToHuman) {
-        const fallbackNote =
-          text && !leadForm.note
-            ? `Customer asked: ${text}`
-            : "";
-        openLeadForm(
-          data?.meta?.reason || "ai_handoff",
-          fallbackNote
-        );
+        const fallbackNote = text && !leadForm.note ? `Customer asked: ${text}` : "";
+        injectLeadForm(data?.meta?.reason || "ai_handoff", fallbackNote);
       }
     } catch (error) {
       console.error("API error:", error);
+
       setMessages((prev) => [
-        ...prev,
+        ...prev.filter((m) => m.type !== "lead_form"),
         {
           id: Date.now() + 1,
           role: "assistant",
           content:
-            "Sorry, service temporarily unavailable. Please leave your email and our colleague will follow up soon.",
+            "As an AI assistant, I can't answer this question accurately right now. Please email support@cyberhome.app or fill in the feedback form below, and our colleague will get back to you soon.",
           createdAt: new Date().toISOString(),
           products: [],
           meta: {
@@ -680,7 +636,8 @@ export default function SimpleChat() {
           },
         },
       ]);
-      openLeadForm("frontend_fetch_error");
+
+      injectLeadForm("frontend_fetch_error");
     } finally {
       setLoading(false);
     }
@@ -701,262 +658,278 @@ export default function SimpleChat() {
 
   function handleEndChat() {
     touchActivity();
-    openLeadForm("end_chat");
+    injectLeadForm("end_chat");
   }
 
   if (!mounted) return null;
 
-  const leadTitle =
-    leadFormReason === "idle_timeout"
-      ? "Need more help?"
-      : leadFormReason === "end_chat"
-      ? "Before you leave"
-      : "Leave your contact information";
-
-  const leadSubtitle =
-    leadFormReason === "idle_timeout"
-      ? "If you'd like, leave your email and our support team can follow up with you."
-      : leadFormReason === "end_chat"
-      ? "You can leave your email here, and our colleague will follow up if needed."
-      : "If the AI could not fully answer your question, please leave your email and our colleague will check and come back to you soon.";
-
   return (
-    <>
+    <div
+      style={{
+        maxWidth: 1080,
+        margin: "24px auto",
+        background: "#f9fafb",
+        borderRadius: 18,
+        overflow: "hidden",
+        border: "1px solid #e5e7eb",
+      }}
+    >
       <div
         style={{
-          maxWidth: 1080,
-          margin: "24px auto",
-          background: "#f9fafb",
-          borderRadius: 18,
-          overflow: "hidden",
-          border: "1px solid #e5e7eb",
+          background: "#171717",
+          color: "#fff",
+          padding: "18px 22px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
         }}
       >
+        <div style={{ fontWeight: 700, fontSize: 18 }}>CyberHome Support</div>
         <div
           style={{
-            background: "#171717",
-            color: "#fff",
-            padding: "18px 22px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 16,
+            fontSize: 12,
+            color: "#d1d5db",
+            background: "#262626",
+            border: "1px solid #404040",
+            borderRadius: 999,
+            padding: "6px 10px",
+            fontWeight: 600,
+            whiteSpace: "nowrap",
           }}
         >
-          <div style={{ fontWeight: 700, fontSize: 18 }}>CyberHome Support</div>
-          <div
-            style={{
-              fontSize: 12,
-              color: "#d1d5db",
-              background: "#262626",
-              border: "1px solid #404040",
-              borderRadius: 999,
-              padding: "6px 10px",
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-            }}
-          >
-            SimpleChat {SIMPLECHAT_VERSION}
-          </div>
+          SimpleChat {SIMPLECHAT_VERSION}
         </div>
+      </div>
 
-        <div
-          style={{
-            padding: 20,
-            minHeight: 620,
-            maxHeight: 760,
-            overflowY: "auto",
-            background: "#ededed",
-          }}
-          onMouseMove={touchActivity}
-          onClick={touchActivity}
-        >
-          {messages.map((msg) => {
-            const isUser = msg.role === "user";
+      <div
+        style={{
+          padding: 20,
+          minHeight: 620,
+          maxHeight: 760,
+          overflowY: "auto",
+          background: "#ededed",
+        }}
+        onMouseMove={touchActivity}
+        onClick={touchActivity}
+      >
+        {messages.map((msg) => {
+          const isUser = msg.role === "user";
+
+          if (msg.type === "lead_form") {
+            const reason = msg.meta?.reason || "manual";
+            const title =
+              reason === "idle_timeout"
+                ? "Need more help?"
+                : reason === "end_chat"
+                ? "Before you leave"
+                : "Leave your contact information";
+
+            const subtitle =
+              reason === "idle_timeout"
+                ? "If you'd like, leave your email and our support team can follow up with you."
+                : reason === "end_chat"
+                ? "You can leave your email here, and our colleague will follow up if needed."
+                : "As an AI assistant, I can't answer this question accurately right now. Please email support@cyberhome.app or fill in the feedback form below, and our colleague will get back to you soon.";
 
             return (
               <div key={msg.id} style={{ marginBottom: 24 }}>
                 <div
                   style={{
                     display: "flex",
-                    justifyContent: isUser ? "flex-end" : "flex-start",
+                    justifyContent: "flex-start",
                     gap: 10,
                     alignItems: "flex-start",
                   }}
                 >
-                  {!isUser ? <Avatar role="assistant" /> : null}
-
-                  <div style={{ maxWidth: "82%" }}>
-                    <div
-                      style={{
-                        background: isUser ? "#2196f3" : "#fff",
-                        color: isUser ? "#fff" : "#1f2937",
-                        padding: "14px 16px",
-                        borderRadius: 18,
-                        fontSize: 16,
-                        lineHeight: 1.5,
-                        boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {msg.content}
-                    </div>
-
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#9ca3af",
-                        marginTop: 6,
-                        paddingLeft: isUser ? 0 : 8,
-                        textAlign: isUser ? "right" : "left",
-                      }}
-                    >
-                      {formatTime(msg.createdAt)}
-                    </div>
-
-                    {msg.role === "assistant" && msg.meta?.detailLink ? (
-                      <DetailLinkButton
-                        href={msg.meta.detailLink}
-                        label={msg.meta.detailLinkLabel || "View Details"}
-                      />
-                    ) : null}
-
-                    {msg.role === "assistant" &&
-                    Array.isArray(msg.products) &&
-                    msg.products.length > 0 ? (
-                      <div style={{ marginTop: 10 }}>
-                        <div
-                          style={{
-                            display: "inline-block",
-                            background: "#dcfce7",
-                            color: "#15803d",
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            fontSize: 13,
-                            fontWeight: 600,
-                            marginBottom: 8,
-                          }}
-                        >
-                          Products Available
-                        </div>
-
-                        {msg.products.map((product, idx) => (
-                          <ProductCard
-                            key={product?.id || product?.handle || idx}
-                            product={product}
-                          />
-                        ))}
-                      </div>
-                    ) : null}
+                  <Avatar role="assistant" />
+                  <div style={{ maxWidth: "82%", width: "82%" }}>
+                    <InlineLeadForm
+                      title={title}
+                      subtitle={subtitle}
+                      submitting={leadSubmitting}
+                      submitted={leadSubmitted}
+                      error={leadError}
+                      form={leadForm}
+                      onChange={handleLeadFormChange}
+                      onSubmit={() => submitLeadForm(reason)}
+                      onCancel={dismissLeadForm}
+                    />
                   </div>
-
-                  {isUser ? <Avatar role="user" /> : null}
                 </div>
               </div>
             );
-          })}
+          }
 
-          {loading ? (
-            <div style={{ color: "#6b7280", fontSize: 14 }}>Thinking...</div>
-          ) : null}
+          return (
+            <div key={msg.id} style={{ marginBottom: 24 }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: isUser ? "flex-end" : "flex-start",
+                  gap: 10,
+                  alignItems: "flex-start",
+                }}
+              >
+                {!isUser ? <Avatar role="assistant" /> : null}
 
-          <div ref={bottomRef} />
+                <div style={{ maxWidth: "82%" }}>
+                  <div
+                    style={{
+                      background: isUser ? "#2196f3" : "#fff",
+                      color: isUser ? "#fff" : "#1f2937",
+                      padding: "14px 16px",
+                      borderRadius: 18,
+                      fontSize: 16,
+                      lineHeight: 1.5,
+                      boxShadow: "0 1px 2px rgba(0,0,0,0.05)",
+                      whiteSpace: "pre-wrap",
+                    }}
+                  >
+                    {msg.content}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#9ca3af",
+                      marginTop: 6,
+                      paddingLeft: isUser ? 0 : 8,
+                      textAlign: isUser ? "right" : "left",
+                    }}
+                  >
+                    {formatTime(msg.createdAt)}
+                  </div>
+
+                  {msg.role === "assistant" && msg.meta?.detailLink ? (
+                    <DetailLinkButton
+                      href={msg.meta.detailLink}
+                      label={msg.meta.detailLinkLabel || "View Details"}
+                    />
+                  ) : null}
+
+                  {msg.role === "assistant" &&
+                  Array.isArray(msg.products) &&
+                  msg.products.length > 0 ? (
+                    <div style={{ marginTop: 10 }}>
+                      <div
+                        style={{
+                          display: "inline-block",
+                          background: "#dcfce7",
+                          color: "#15803d",
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          fontSize: 13,
+                          fontWeight: 600,
+                          marginBottom: 8,
+                        }}
+                      >
+                        Products Available
+                      </div>
+
+                      {msg.products.map((product, idx) => (
+                        <ProductCard
+                          key={product?.id || product?.handle || idx}
+                          product={product}
+                        />
+                      ))}
+
+                      <MoreLinkButton
+                        href={msg.meta?.moreLink}
+                        label={msg.meta?.moreLinkLabel || "More"}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                {isUser ? <Avatar role="user" /> : null}
+              </div>
+            </div>
+          );
+        })}
+
+        {loading ? (
+          <div style={{ color: "#6b7280", fontSize: 14 }}>Thinking...</div>
+        ) : null}
+
+        <div ref={bottomRef} />
+      </div>
+
+      <div
+        style={{
+          padding: 16,
+          background: "#f3f4f6",
+          borderTop: "1px solid #e5e7eb",
+        }}
+      >
+        <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
+          <textarea
+            value={input}
+            onChange={handleInputChange}
+            onKeyDown={onKeyDown}
+            onFocus={touchActivity}
+            placeholder="Type your message..."
+            rows={1}
+            style={{
+              flex: 1,
+              resize: "vertical",
+              minHeight: 52,
+              borderRadius: 16,
+              border: "1px solid #d1d5db",
+              padding: "14px 16px",
+              fontSize: 16,
+              outline: "none",
+            }}
+          />
+
+          <button
+            onClick={handleEndChat}
+            disabled={loading}
+            style={{
+              minWidth: 96,
+              height: 52,
+              borderRadius: 16,
+              border: "1px solid #d1d5db",
+              background: "#ffffff",
+              color: loading ? "#9ca3af" : "#374151",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: loading ? "not-allowed" : "pointer",
+              padding: "0 14px",
+            }}
+          >
+            End Chat
+          </button>
+
+          <button
+            onClick={sendMessage}
+            disabled={loading}
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 999,
+              border: "none",
+              background: loading ? "#d1d5db" : "#9ca3af",
+              color: "#fff",
+              fontSize: 18,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+          >
+            ↑
+          </button>
         </div>
 
         <div
           style={{
-            padding: 16,
-            background: "#f3f4f6",
-            borderTop: "1px solid #e5e7eb",
+            textAlign: "center",
+            color: "#9ca3af",
+            fontSize: 12,
+            marginTop: 8,
           }}
         >
-          <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
-            <textarea
-              value={input}
-              onChange={handleInputChange}
-              onKeyDown={onKeyDown}
-              onFocus={touchActivity}
-              placeholder="Type your message..."
-              rows={1}
-              style={{
-                flex: 1,
-                resize: "vertical",
-                minHeight: 52,
-                borderRadius: 16,
-                border: "1px solid #d1d5db",
-                padding: "14px 16px",
-                fontSize: 16,
-                outline: "none",
-              }}
-            />
-
-            <button
-              onClick={handleEndChat}
-              disabled={loading}
-              style={{
-                minWidth: 96,
-                height: 52,
-                borderRadius: 16,
-                border: "1px solid #d1d5db",
-                background: "#ffffff",
-                color: loading ? "#9ca3af" : "#374151",
-                fontSize: 14,
-                fontWeight: 700,
-                cursor: loading ? "not-allowed" : "pointer",
-                padding: "0 14px",
-              }}
-            >
-              End Chat
-            </button>
-
-            <button
-              onClick={sendMessage}
-              disabled={loading}
-              style={{
-                width: 52,
-                height: 52,
-                borderRadius: 999,
-                border: "none",
-                background: loading ? "#d1d5db" : "#9ca3af",
-                color: "#fff",
-                fontSize: 18,
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
-            >
-              ↑
-            </button>
-          </div>
-
-          <div
-            style={{
-              textAlign: "center",
-              color: "#9ca3af",
-              fontSize: 12,
-              marginTop: 8,
-            }}
-          >
-            Enter to send
-          </div>
+          Enter to send
         </div>
       </div>
-
-      <Modal
-        open={leadFormOpen}
-        title={leadTitle}
-        onClose={closeLeadForm}
-      >
-        <LeadForm
-          title={leadTitle}
-          subtitle={leadSubtitle}
-          submitting={leadSubmitting}
-          submitted={leadSubmitted}
-          error={leadError}
-          form={leadForm}
-          onChange={handleLeadFormChange}
-          onSubmit={submitLeadForm}
-          onClose={closeLeadForm}
-        />
-      </Modal>
-    </>
+    </div>
   );
 }
