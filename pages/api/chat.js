@@ -17,11 +17,11 @@ if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
 // =========================
-// CyberHome AI Support V8.3
+// CyberHome AI Support V8.4
 // Direct-template-first + improved product search
 // =========================
 
-const CHAT_API_VERSION = "V8.3";
+const CHAT_API_VERSION = "V8.4";
 
 const rateMap = new Map();
 
@@ -628,7 +628,7 @@ function familyMatch(product, family) {
   }
 
   if (family === "yogurt_maker") {
-    return haystack.includes("yogurt") && !haystack.includes("jar");
+    return haystack.includes("yogurt") && !haystack.includes("replacement");
   }
 
   if (family === "yogurt_accessory") {
