@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V6.7";
+const SIMPLECHAT_VERSION = "V8.0";
 const USER_AVATAR = "You";
 const ASSISTANT_AVATAR = "AI";
 const IDLE_TIMEOUT_MS = 60 * 1000;
@@ -414,6 +414,7 @@ export default function SimpleChat() {
   const bottomRef = useRef(null);
   const idleTimerRef = useRef(null);
   const hasTriggeredIdleRef = useRef(false);
+  const leadFormOpenRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
@@ -467,20 +468,20 @@ export default function SimpleChat() {
   }
 
   function removeExistingLeadForms() {
+    leadFormOpenRef.current = false;
     setMessages((prev) => prev.filter((m) => m.type !== "lead_form"));
   }
 
   function injectLeadForm(reason, presetNote = "") {
     removeExistingLeadForms();
+    setLeadSubmitting(false);
     setLeadError("");
     setLeadSubmitted(false);
 
-    if (presetNote) {
-      setLeadForm((prev) => ({
-        ...prev,
-        note: prev.note || presetNote,
-      }));
-    }
+    setLeadForm((prev) => ({
+      ...prev,
+      note: presetNote ? prev.note || presetNote : prev.note,
+    }));
 
     const formMessage = {
       id: `lead_${Date.now()}`,
@@ -495,10 +496,13 @@ export default function SimpleChat() {
       },
     };
 
+    leadFormOpenRef.current = true;
     setMessages((prev) => [...prev, formMessage]);
   }
 
   function dismissLeadForm() {
+    setLeadSubmitting(false);
+    setLeadError("");
     removeExistingLeadForms();
   }
 
@@ -546,6 +550,10 @@ export default function SimpleChat() {
       setLeadSubmitted(true);
       setIdlePromptEnabled(false);
       removeExistingLeadForms();
+      setLeadForm((prev) => ({
+        ...prev,
+        note: "",
+      }));
 
       setMessages((prev) => [
         ...prev,
@@ -636,10 +644,7 @@ export default function SimpleChat() {
         Boolean(data?.meta?.handoffToHuman) ||
         Boolean(data?.meta?.fallbackTriggered);
 
-      const looksLikeFallback =
-        aiText.includes(
-          "As an AI assistant, I can't answer this question accurately right now."
-        );
+      const looksLikeFallback = looksLikeFallbackText(aiText);
 
       const disallowedNoAnswerPatterns = [
         "we do not sell",
@@ -656,12 +661,9 @@ export default function SimpleChat() {
         lowerAiText.includes(p)
       );
 
-      if (shouldShowLeadForm || looksLikeFallback || disallowedHit) {
+      if ((shouldShowLeadForm || looksLikeFallback || disallowedHit) && !leadFormOpenRef.current) {
         const fallbackNote = text && !leadForm.note ? `Customer asked: ${text}` : "";
-        injectLeadForm(
-          data?.meta?.reason || "ai_handoff",
-          fallbackNote
-        );
+        injectLeadForm(data?.meta?.reason || "ai_handoff", fallbackNote);
       }
     } catch (error) {
       console.error("API error:", error);
@@ -683,7 +685,7 @@ export default function SimpleChat() {
         },
       ]);
 
-      injectLeadForm("frontend_fetch_error");
+      if (!leadFormOpenRef.current) injectLeadForm("frontend_fetch_error");
     } finally {
       setLoading(false);
     }
