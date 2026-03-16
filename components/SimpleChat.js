@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V8.0";
+const SIMPLECHAT_VERSION = "V8.1";
 const USER_AVATAR = "You";
 const ASSISTANT_AVATAR = "AI";
 const IDLE_TIMEOUT_MS = 60 * 1000;
@@ -126,7 +126,7 @@ function ProductCard({ product }) {
   if (!product) return null;
 
   const title = product.title || "Product";
-  const image = product.image || product.image_url || "";
+  const image = product.image || product.image_url || (Array.isArray(product.images) ? product.images[0] : "") || "";
   const price = product.price ?? "";
   const model = product.model || product.product_id || "";
   const url = buildProductUrl(product);
@@ -414,7 +414,6 @@ export default function SimpleChat() {
   const bottomRef = useRef(null);
   const idleTimerRef = useRef(null);
   const hasTriggeredIdleRef = useRef(false);
-  const leadFormOpenRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
@@ -468,20 +467,20 @@ export default function SimpleChat() {
   }
 
   function removeExistingLeadForms() {
-    leadFormOpenRef.current = false;
     setMessages((prev) => prev.filter((m) => m.type !== "lead_form"));
   }
 
   function injectLeadForm(reason, presetNote = "") {
     removeExistingLeadForms();
-    setLeadSubmitting(false);
     setLeadError("");
     setLeadSubmitted(false);
 
-    setLeadForm((prev) => ({
-      ...prev,
-      note: presetNote ? prev.note || presetNote : prev.note,
-    }));
+    if (presetNote) {
+      setLeadForm((prev) => ({
+        ...prev,
+        note: prev.note || presetNote,
+      }));
+    }
 
     const formMessage = {
       id: `lead_${Date.now()}`,
@@ -496,14 +495,13 @@ export default function SimpleChat() {
       },
     };
 
-    leadFormOpenRef.current = true;
     setMessages((prev) => [...prev, formMessage]);
   }
 
   function dismissLeadForm() {
-    setLeadSubmitting(false);
-    setLeadError("");
     removeExistingLeadForms();
+    setLeadError("");
+    setLeadSubmitting(false);
   }
 
   function handleLeadFormChange(field, value) {
@@ -550,10 +548,6 @@ export default function SimpleChat() {
       setLeadSubmitted(true);
       setIdlePromptEnabled(false);
       removeExistingLeadForms();
-      setLeadForm((prev) => ({
-        ...prev,
-        note: "",
-      }));
 
       setMessages((prev) => [
         ...prev,
@@ -644,26 +638,14 @@ export default function SimpleChat() {
         Boolean(data?.meta?.handoffToHuman) ||
         Boolean(data?.meta?.fallbackTriggered);
 
-      const looksLikeFallback = looksLikeFallbackText(aiText);
+      const looksLikeFallback = aiText.includes("As an AI assistant, I can't answer this question accurately right now.");
 
-      const disallowedNoAnswerPatterns = [
-        "we do not sell",
-        "we don't sell",
-        "i don't have information",
-        "not available",
-        "cannot find",
-        "sorry, but",
-        "sorry but",
-      ];
-
-      const lowerAiText = aiText.toLowerCase();
-      const disallowedHit = disallowedNoAnswerPatterns.some((p) =>
-        lowerAiText.includes(p)
-      );
-
-      if ((shouldShowLeadForm || looksLikeFallback || disallowedHit) && !leadFormOpenRef.current) {
+      if ((shouldShowLeadForm || looksLikeFallback) && !(Array.isArray(data?.products) && data.products.length > 0)) {
         const fallbackNote = text && !leadForm.note ? `Customer asked: ${text}` : "";
-        injectLeadForm(data?.meta?.reason || "ai_handoff", fallbackNote);
+        injectLeadForm(
+          data?.meta?.reason || "ai_handoff",
+          fallbackNote
+        );
       }
     } catch (error) {
       console.error("API error:", error);
@@ -685,7 +667,7 @@ export default function SimpleChat() {
         },
       ]);
 
-      if (!leadFormOpenRef.current) injectLeadForm("frontend_fetch_error");
+      injectLeadForm("frontend_fetch_error");
     } finally {
       setLoading(false);
     }

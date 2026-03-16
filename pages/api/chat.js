@@ -16,24 +16,12 @@ if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
 }
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
-const CHAT_API_VERSION = "V8.0";
-
-const PRODUCT_SYNONYM_RULES = [
-  { pattern: /yogurt machine|yogurt appliance|greek yogurt machine/i, canonical: "yogurt maker" },
-  { pattern: /cup pot|health pot|medicine kettle|herbal kettle|养生壶|药膳壶/i, canonical: "health kettle" },
-  { pattern: /soy milk maker|oat milk maker|plant milk maker/i, canonical: "nut milk maker" },
-  { pattern: /baby food processor|baby cooker/i, canonical: "baby food maker" },
-  { pattern: /cheong fun|cheung fun|race roll|race noodle roll|肠粉/i, canonical: "rice roll steamer" },
-];
-
-const PREFERRED_MODEL_RANKINGS = {
-  yogurt_maker: ["SNJ-C10T1BK", "SNJ-C10T1", "SNJ-C10H2"],
-};
-
 // =========================
-// CyberHome AI Support V8.0
-// Direct-template-first + detail links
+// CyberHome AI Support V8.1
+// Direct-template-first + improved product search
 // =========================
+
+const CHAT_API_VERSION = "V8.1";
 
 const rateMap = new Map();
 
@@ -69,50 +57,6 @@ function isTooLong(text) {
 
 function normalizeText(value) {
   return String(value || "").toLowerCase().trim();
-}
-
-function canonicalizeQueryText(value) {
-  let text = String(value || "");
-  for (const rule of PRODUCT_SYNONYM_RULES) {
-    text = text.replace(rule.pattern, rule.canonical);
-  }
-  return text;
-}
-
-function normalizeModel(value) {
-  return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-}
-
-function getPreferredModelRank(product, family) {
-  const list = PREFERRED_MODEL_RANKINGS[family] || [];
-  if (!list.length) return Number.MAX_SAFE_INTEGER;
-  const model = normalizeModel(product?.model || product?.product_id || "");
-  const index = list.findIndex((m) => normalizeModel(m) === model);
-  return index === -1 ? Number.MAX_SAFE_INTEGER : index;
-}
-
-function rerankPreferredProducts(products = [], family) {
-  if (!Array.isArray(products) || products.length <= 1) return products;
-  return [...products].sort((a, b) => {
-    const rankA = getPreferredModelRank(a, family);
-    const rankB = getPreferredModelRank(b, family);
-    if (rankA !== rankB) return rankA - rankB;
-    return Number(b?._score || b?.score || 0) - Number(a?._score || a?.score || 0);
-  });
-}
-
-function getCollectionUrlForFamily(family, products = []) {
-  if (family === "yogurt_maker") return `${STORE_URL}/collections/yogurt-makers`;
-  if (family === "health_kettle") return `${STORE_URL}/collections/health-kettles`;
-  if (family === "kettle") return `${STORE_URL}/collections/kettles`;
-  if (family === "rice_cooker") return `${STORE_URL}/collections/rice-cookers`;
-  if (family === "air_fryer") return `${STORE_URL}/collections/air-fryers`;
-  if (family === "humidifier") return `${STORE_URL}/collections/humidifiers`;
-  if (family === "baby_food_maker") return `${STORE_URL}/collections/baby-food-makers`;
-  if (family === "nut_milk_maker") return `${STORE_URL}/collections/nut-milk-makers`;
-  if (family === "rice_roll_steamer") return `${STORE_URL}/collections/rice-roll-steamers`;
-  if (Array.isArray(products) && products[0]?.url) return products[0].url;
-  return "";
 }
 
 const STOPWORDS = new Set([
@@ -355,7 +299,7 @@ function normalizeProduct(p) {
     id: p.product_id || p.handle || p.id || Math.random().toString(36).slice(2),
     title: p.title || "Product",
     price: p.price ?? "",
-    image: p.image_url || p.image || "",
+    image: p.image_url || p.image || (Array.isArray(p.images) ? p.images[0] : "") || p.imageUrl || "",
     url: p.url ? buildProductURL(p.url) : buildProductURL(p.handle || p.slug || ""),
     handle: p.handle || "",
     model:
@@ -525,25 +469,21 @@ function shouldInheritProductContext(userMessage) {
 }
 
 function detectProductFamily(text, history = []) {
-  const raw = `${String(text || "")} ${
+  const q = `${normalizeText(text)} ${
     shouldInheritProductContext(text) ? extractRecentContext(history) : ""
   }`.trim();
-  const q = normalizeText(canonicalizeQueryText(raw));
 
   if (
     q.includes("health kettle") ||
-    q.includes("养生壶") ||
+    q.includes("health pot") ||
     q.includes("cup pot") ||
     q.includes("medicine kettle") ||
-    q.includes("herbal kettle")
-  ) {
-    return "health_kettle";
-  }
-
-  if (
+    q.includes("herbal kettle") ||
+    q.includes("tea maker") ||
+    q.includes("养生壶") ||
+    q.includes("kettle") ||
     q.includes("water kettle") ||
-    q.includes("tea kettle") ||
-    (q.includes("kettle") && !q.includes("health kettle"))
+    q.includes("tea kettle")
   ) {
     return "kettle";
   }
@@ -558,7 +498,7 @@ function detectProductFamily(text, history = []) {
     return "accessory";
   }
 
-  if (q.includes("yogurt maker") || q.includes("yogurt") || q.includes("酸奶")) return "yogurt_maker";
+  if (q.includes("yogurt maker") || q.includes("yogurt machine") || q.includes("greek yogurt") || q.includes("yogurt") || q.includes("酸奶")) return "yogurt_maker";
 
   if (
     q.includes("rice cooker") ||
@@ -571,7 +511,7 @@ function detectProductFamily(text, history = []) {
   }
 
   if (
-    q.includes("rice roll steamer") ||
+    q.includes("rice roll") ||
     q.includes("cheung fun") ||
     q.includes("cheong fun") ||
     q.includes("rice noodle roll") ||
@@ -589,8 +529,8 @@ function detectProductFamily(text, history = []) {
   if (q.includes("bottle warmer") || q.includes("milk warmer") || q.includes("暖奶")) {
     return "bottle_warmer";
   }
-  if (q.includes("baby food maker") || q.includes("baby food") || q.includes("辅食")) return "baby_food_maker";
-  if (q.includes("nut milk maker") || q.includes("nut milk") || q.includes("soy milk") || q.includes("oat milk")) {
+  if (q.includes("baby food maker") || q.includes("baby food processor") || q.includes("baby steamer blender") || q.includes("baby puree") || q.includes("baby food") || q.includes("辅食")) return "baby_food_maker";
+  if (q.includes("nut milk") || q.includes("soy milk") || q.includes("oat milk")) {
     return "nut_milk_maker";
   }
   if (q.includes("juicer")) return "juicer";
@@ -620,23 +560,16 @@ function familyMatch(product, family) {
       .join(" ")
   );
 
-  if (family === "health_kettle") {
-    return (
-      haystack.includes("health kettle") ||
-      haystack.includes("health pot") ||
-      haystack.includes("medicine kettle") ||
-      haystack.includes("herbal tea kettle") ||
-      haystack.includes("wellness kettle") ||
-      haystack.includes("养生壶")
-    );
-  }
-
   if (family === "kettle") {
     return (
       haystack.includes("kettle") ||
       haystack.includes("water kettle") ||
+      haystack.includes("health kettle") ||
+      haystack.includes("health pot") ||
+      haystack.includes("medicine kettle") ||
+      haystack.includes("herbal kettle") ||
+      haystack.includes("tea maker") ||
       haystack.includes("tea kettle") ||
-      (haystack.includes("health kettle") && !haystack.includes("jar")) ||
       haystack.includes("养生壶")
     );
   }
@@ -667,7 +600,7 @@ function familyMatch(product, family) {
   }
 
   if (family === "baby_food_maker") {
-    return haystack.includes("baby food");
+    return haystack.includes("baby food") || haystack.includes("baby puree") || haystack.includes("steamer and blender") || haystack.includes("baby care appliance");
   }
 
   if (family === "air_purifier") {
@@ -715,27 +648,29 @@ function detectIntent(userMessage, history = []) {
 }
 
 function buildSearchQueries(userMessage, history = []) {
-  const normalizedCurrent = normalizeText(canonicalizeQueryText(userMessage));
+  const q = normalizeText(userMessage);
   const context = shouldInheritProductContext(userMessage)
-    ? normalizeText(canonicalizeQueryText(extractRecentContext(history)))
+    ? extractRecentContext(history)
     : "";
-  const combined = `${normalizedCurrent} ${context}`.trim();
-  const queries = [canonicalizeQueryText(userMessage)];
+  const combined = `${q} ${context}`.trim();
+  const queries = [userMessage];
 
   if (combined.includes("yogurt") || combined.includes("酸奶")) {
     queries.push("yogurt maker");
+    queries.push("greek yogurt maker");
   }
 
-  if (combined.includes("health kettle") || combined.includes("cup pot") || combined.includes("养生壶")) {
+  if (combined.includes("baby food") || combined.includes("辅食")) {
+    queries.push("baby food maker");
+  }
+
+  if (combined.includes("cup pot") || combined.includes("health kettle") || combined.includes("health pot") || combined.includes("medicine kettle") || combined.includes("herbal kettle") || combined.includes("养生壶")) {
     queries.push("health kettle");
+    queries.push("health pot");
   }
 
   if (combined.includes("bottle warmer") || combined.includes("milk warmer")) {
     queries.push("bottle warmer");
-  }
-
-  if (combined.includes("nut milk") || combined.includes("soy milk") || combined.includes("oat milk")) {
-    queries.push("nut milk maker");
   }
 
   if (combined.includes("refund")) {
@@ -750,7 +685,7 @@ function buildSearchQueries(userMessage, history = []) {
     queries.push("fermentation");
   }
 
-  return [...new Set(queries)].slice(0, 3);
+  return [...new Set(queries)].slice(0, 4);
 }
 
 async function fetchWithTimeout(url, timeoutMs = 4500) {
@@ -781,8 +716,8 @@ async function fetchSearch(query) {
 }
 
 function scoreProduct(product, userMessage, history = []) {
-  const q = `${normalizeText(canonicalizeQueryText(userMessage))} ${
-    shouldInheritProductContext(userMessage) ? normalizeText(canonicalizeQueryText(extractRecentContext(history))) : ""
+  const q = `${normalizeText(userMessage)} ${
+    shouldInheritProductContext(userMessage) ? extractRecentContext(history) : ""
   }`.trim();
 
   const words = tokenize(userMessage);
@@ -813,8 +748,12 @@ function scoreProduct(product, userMessage, history = []) {
     score += 20;
   }
 
-  if (q.includes("health kettle") && (haystack.includes("health kettle") || haystack.includes("wellness kettle") || haystack.includes("养生壶"))) {
-    score += 20;
+  if ((q.includes("baby food") || q.includes("baby puree") || q.includes("辅食")) && (haystack.includes("baby food") || haystack.includes("baby puree") || haystack.includes("baby care appliance"))) {
+    score += 18;
+  }
+
+  if ((q.includes("health kettle") || q.includes("health pot") || q.includes("cup pot") || q.includes("medicine kettle") || q.includes("herbal kettle") || q.includes("养生壶")) && (haystack.includes("health kettle") || haystack.includes("health pot") || haystack.includes("medicine kettle") || haystack.includes("herbal kettle") || haystack.includes("tea maker") || haystack.includes("养生壶") || haystack.includes("kettle"))) {
+    score += 18;
   }
 
   if (
@@ -843,8 +782,8 @@ function scoreProduct(product, userMessage, history = []) {
     score -= 15;
   }
 
-  if (q.includes("health kettle") && !(haystack.includes("health kettle") || haystack.includes("wellness kettle") || haystack.includes("养生壶"))) {
-    score -= 12;
+  if ((q.includes("baby food") || q.includes("baby puree") || q.includes("辅食")) && !(haystack.includes("baby food") || haystack.includes("baby puree") || haystack.includes("baby care appliance"))) {
+    score -= 14;
   }
 
   if (
@@ -860,18 +799,6 @@ function scoreProduct(product, userMessage, history = []) {
 
   if (q.includes("air purifier") && !haystack.includes("air purifier")) {
     score -= 14;
-  }
-
-  if (normalizeText(product.product_type) === "pending") {
-    score -= 6;
-  }
-
-  const exactModelMatches = Array.from(new Set(String(userMessage || "").toUpperCase().match(/[A-Z]{2,5}-[A-Z0-9]{2,12}/g) || []));
-  if (exactModelMatches.length > 0) {
-    const productModel = normalizeModel(product.model || product.product_id || "");
-    if (exactModelMatches.some((m) => normalizeModel(m) === productModel)) {
-      score += 40;
-    }
   }
 
   return score;
@@ -1187,7 +1114,6 @@ async function searchKnowledge(userMessage, history = []) {
   let rankedProducts = normalizedProducts.filter((p) => p._score >= 2);
   if (rankedProducts.length === 0) rankedProducts = normalizedProducts;
 
-  rankedProducts = rerankPreferredProducts(rankedProducts, family);
   rankedProducts = rankedProducts.slice(0, 3).map(({ _score, ...rest }) => rest);
 
   return {
@@ -1195,7 +1121,6 @@ async function searchKnowledge(userMessage, history = []) {
     products: rankedProducts,
     policies: allPolicies,
     blogs: allBlogs,
-    family,
   };
 }
 
@@ -1302,7 +1227,7 @@ export default async function handler(req, res) {
 
     const { productIntent, policyIntent, blogIntent } = detectIntent(userMessage, history);
 
-    let kb = { faqs: [], products: [], policies: [], blogs: [], family: null };
+    let kb = { faqs: [], products: [], policies: [], blogs: [] };
     try {
       kb = await searchKnowledge(userMessage, history);
     } catch (err) {
@@ -1350,7 +1275,6 @@ export default async function handler(req, res) {
           showContactForm: false,
           fallbackTriggered: false,
           handoffToHuman: false,
-          version: CHAT_API_VERSION,
         },
       });
     }
@@ -1380,7 +1304,6 @@ export default async function handler(req, res) {
           showContactForm: false,
           fallbackTriggered: false,
           handoffToHuman: false,
-          version: CHAT_API_VERSION,
         },
       });
     }
@@ -1537,12 +1460,8 @@ export default async function handler(req, res) {
         productSignature: shouldReturnProducts ? currentProductSignature : "",
         detailLink: "",
         detailLinkLabel: "",
-        moreLink: shouldReturnProducts ? getCollectionUrlForFamily(kb.family, kb.products) : "",
-        moreLinkLabel: shouldReturnProducts
-          ? latestLanguage === "zh"
-            ? "查看更多"
-            : "More products"
-          : "",
+        moreLink: shouldReturnProducts && kb.products[0]?.product_type ? `${STORE_URL}/search?q=${encodeURIComponent(kb.products[0].product_type)}` : "",
+        moreLinkLabel: latestLanguage === "zh" ? "查看更多" : "More products",
         source: "ai",
         showContactForm: false,
         fallbackTriggered: false,
@@ -1550,7 +1469,6 @@ export default async function handler(req, res) {
         inputTokens,
         outputTokens,
         totalTokens,
-        version: CHAT_API_VERSION,
       },
     });
   } catch (error) {
@@ -1567,11 +1485,12 @@ export default async function handler(req, res) {
         blogCount: 0,
         detailLink: "",
         detailLinkLabel: "",
+        moreLink: shouldReturnProducts && kb.products[0]?.product_type ? `${STORE_URL}/search?q=${encodeURIComponent(kb.products[0].product_type)}` : "",
+        moreLinkLabel: latestLanguage === "zh" ? "查看更多" : "More products",
         showContactForm: true,
         fallbackTriggered: true,
         handoffToHuman: true,
         reason: "server_error",
-        version: CHAT_API_VERSION,
       },
     });
   }
