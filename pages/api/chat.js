@@ -1,8 +1,5 @@
 import OpenAI from "openai";
 
-// CyberHome AI Chat API - V7.4
-const CHAT_API_VERSION = "V7.4";
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -517,22 +514,10 @@ function detectProductFamily(text, history = []) {
     return "rice_roll_steamer";
   }
 
-  if (
-    q.includes("dough maker") ||
-    q.includes("dough kneader") ||
-    q.includes("pasta maker") ||
-    q.includes("揉面") ||
-    q.includes("和面")
-  ) {
-    return "dough_maker";
-  }
   if (q.includes("blender") || q.includes("搅拌机")) return "blender";
   if (q.includes("air fryer")) return "air_fryer";
   if (q.includes("humidifier")) return "humidifier";
   if (q.includes("air purifier")) return "air_purifier";
-  if (q.includes("food steamer") || q.includes("egg cooker") || q.includes("蒸锅") || q.includes("蒸蛋器")) {
-    return "food_steamer";
-  }
   if (q.includes("sterilizer")) return "sterilizer";
   if (q.includes("bottle warmer") || q.includes("milk warmer") || q.includes("暖奶")) {
     return "bottle_warmer";
@@ -611,20 +596,6 @@ function familyMatch(product, family) {
     return haystack.includes("air purifier");
   }
 
-  if (family === "dough_maker") {
-    return (
-      haystack.includes("dough maker") ||
-      haystack.includes("dough kneader") ||
-      haystack.includes("pasta maker") ||
-      haystack.includes("揉面") ||
-      haystack.includes("和面")
-    );
-  }
-
-  if (family === "food_steamer") {
-    return haystack.includes("food steamer") || haystack.includes("egg cooker") || haystack.includes("steamer");
-  }
-
   if (family === "nut_milk_maker") {
     return haystack.includes("nut milk") || haystack.includes("soy milk") || haystack.includes("oat milk");
   }
@@ -648,7 +619,7 @@ function detectIntent(userMessage, history = []) {
   const q = `${current} ${recent}`.trim();
 
   const productIntent =
-    /(looking for|do you have|recommend|compare|which one|best|model|show me|rice cooker|rice cookers|yogurt|dough maker|pasta maker|food steamer|egg cooker|steamer|cheung fun|cheong fun|blender|air fryer|humidifier|sterilizer|jar|parts|manual|kettle|health kettle|tea kettle|bottle warmer|milk warmer|juicer|nut milk|soy milk|air purifier|toaster|hot plate|electric oven|cup pot|酸奶|电饭煲|肠粉|说明书|配件|玻璃罐|养生壶|水壶|有吗|推荐)/i.test(
+    /(looking for|do you have|recommend|compare|which one|best|model|show me|rice cooker|rice cookers|yogurt|steamer|cheung fun|cheong fun|blender|air fryer|humidifier|sterilizer|jar|parts|manual|kettle|health kettle|tea kettle|bottle warmer|milk warmer|juicer|nut milk|air purifier|酸奶|电饭煲|肠粉|说明书|配件|玻璃罐|养生壶|水壶|有吗|推荐)/i.test(
       q
     );
 
@@ -679,49 +650,6 @@ function buildSearchQueries(userMessage, history = []) {
 
   if (combined.includes("bottle warmer") || combined.includes("milk warmer")) {
     queries.push("bottle warmer");
-  }
-
-  if (
-    combined.includes("dough maker") ||
-    combined.includes("dough kneader") ||
-    combined.includes("pasta maker") ||
-    combined.includes("揉面") ||
-    combined.includes("和面")
-  ) {
-    queries.push("dough maker");
-  }
-
-  if (
-    combined.includes("food steamer") ||
-    combined.includes("egg cooker") ||
-    combined.includes("蒸锅") ||
-    combined.includes("蒸蛋器")
-  ) {
-    queries.push("food steamer");
-  }
-
-  if (combined.includes("air purifier")) {
-    queries.push("air purifier");
-  }
-
-  if (combined.includes("humidifier")) {
-    queries.push("humidifier");
-  }
-
-  if (
-    combined.includes("soy milk") ||
-    combined.includes("nut milk") ||
-    combined.includes("oat milk")
-  ) {
-    queries.push("soy milk maker");
-  }
-
-  if (combined.includes("rice cooker")) {
-    queries.push("rice cooker");
-  }
-
-  if (combined.includes("kettle") || combined.includes("health kettle")) {
-    queries.push("health kettle");
   }
 
   if (combined.includes("refund")) {
@@ -840,35 +768,6 @@ function scoreProduct(product, userMessage, history = []) {
     score -= 14;
   }
 
-  if (
-    (q.includes("dough maker") || q.includes("dough kneader") || q.includes("pasta maker")) &&
-    (haystack.includes("dough maker") || haystack.includes("dough kneader") || haystack.includes("pasta maker"))
-  ) {
-    score += 18;
-  }
-
-  if (
-    (q.includes("food steamer") || q.includes("egg cooker") || q.includes("steamer")) &&
-    (haystack.includes("food steamer") || haystack.includes("egg cooker") || haystack.includes("steamer"))
-  ) {
-    score += 16;
-  }
-
-  if (
-    (q.includes("health kettle") || q.includes("tea kettle") || q.includes("kettle")) &&
-    (haystack.includes("health kettle") || haystack.includes("tea kettle") || haystack.includes("kettle"))
-  ) {
-    score += 14;
-  }
-
-  if (q.includes("rice cooker") && haystack.includes("rice cooker")) {
-    score += 16;
-  }
-
-  if (q.includes("humidifier") && haystack.includes("humidifier")) {
-    score += 14;
-  }
-
   return score;
 }
 
@@ -885,33 +784,6 @@ function fallbackTextByLanguage(lang = "en") {
     default:
       return "As an AI assistant, I can't answer this question accurately right now. Please leave your email and our colleague will reply soon.";
   }
-}
-
-
-function containsDisallowedNoAnswer(text = "") {
-  const t = normalizeText(text);
-
-  const disallowedPatterns = [
-    "we do not sell",
-    "we don't sell",
-    "i do not have information",
-    "i don't have information",
-    "do not have information",
-    "don't have information",
-    "not available",
-    "unavailable",
-    "cannot find",
-    "can't find",
-    "sorry, but",
-    "sorry but",
-    "we currently do not sell",
-    "we currently don't sell",
-    "not currently available",
-    "not sold by cyberhome",
-    "not sold on cyberhome",
-  ];
-
-  return disallowedPatterns.some((p) => t.includes(p));
 }
 
 function buildFallbackResponse(lang, reason, extra = {}) {
@@ -1077,23 +949,16 @@ function shouldForceFallback({
     "not sure",
     "i do not know",
     "i don't know",
-    "what are you looking for",
-    "what kind are you looking for",
-    "which one are you looking for",
-    "what kind of product",
-    "for specific models and features",
-    "please check our product listings",
   ];
 
   const vagueHit = vaguePatterns.some((p) => text.includes(p));
-  const disallowedNoAnswerHit = containsDisallowedNoAnswer(text);
-
-  if (productIntent && noProducts) {
-    return { fallback: true, reason: "no_product_match" };
-  }
 
   if (policyIntent && noFaq && noPolicies) {
     return { fallback: true, reason: "no_policy_answer" };
+  }
+
+  if (productIntent && noProducts) {
+    return { fallback: true, reason: "no_product_match" };
   }
 
   if (blogIntent && noBlogs && noFaq) {
@@ -1102,10 +967,6 @@ function shouldForceFallback({
 
   if (!productIntent && !policyIntent && !blogIntent && noFaq && noProducts && noPolicies && noBlogs) {
     return { fallback: true, reason: "no_answer" };
-  }
-
-  if (disallowedNoAnswerHit) {
-    return { fallback: true, reason: "disallowed_no_answer" };
   }
 
   if ((noFaq && noProducts && noPolicies && noBlogs) || vagueHit) {
@@ -1253,9 +1114,13 @@ export default async function handler(req, res) {
             ? "你发送消息太快了，请稍后再试。"
             : "You're sending messages too quickly. Please wait a moment and try again.",
         products: [],
+        showContactForm: false,
+        handoffToHuman: false,
+        fallbackTriggered: false,
         meta: {
           blocked: true,
           reason: "rate_limit",
+          version: CHAT_API_VERSION,
           productsCount: 0,
           sessionId,
         },
@@ -1269,9 +1134,13 @@ export default async function handler(req, res) {
             ? "请将消息控制在 500 个字符以内，这样我可以更准确地帮助你。"
             : "Please keep your message under 500 characters so I can help more accurately.",
         products: [],
+        showContactForm: false,
+        handoffToHuman: false,
+        fallbackTriggered: false,
         meta: {
           blocked: true,
           reason: "message_too_long",
+          version: CHAT_API_VERSION,
           productsCount: 0,
           sessionId,
         },
@@ -1286,9 +1155,13 @@ export default async function handler(req, res) {
             ? "我可以协助解答 CyberHome 产品、发货、保修和店铺相关问题。请告诉我你的产品或售前售后问题。"
             : "I'm here to help with CyberHome products, shipping, warranty, and store-related questions. Please ask a product or store support question.",
         products: [],
+        showContactForm: false,
+        handoffToHuman: false,
+        fallbackTriggered: false,
         meta: {
           blocked: true,
           reason: abuse.injectionHit ? "prompt_injection" : "non_business_abuse",
+          version: CHAT_API_VERSION,
           productsCount: 0,
           sessionId,
         },
@@ -1369,7 +1242,6 @@ export default async function handler(req, res) {
           showContactForm: false,
           fallbackTriggered: false,
           handoffToHuman: false,
-          version: CHAT_API_VERSION,
         },
       });
     }
@@ -1379,6 +1251,9 @@ export default async function handler(req, res) {
       return res.status(200).json({
         response: buildBlogDirectResponse(blog, latestLanguage),
         products: [],
+        showContactForm: false,
+        handoffToHuman: false,
+        fallbackTriggered: false,
         meta: {
           sessionId,
           directAnswer: true,
@@ -1398,18 +1273,6 @@ export default async function handler(req, res) {
           handoffToHuman: false,
         },
       });
-    }
-
-    if (productIntent && (!kb.products || kb.products.length === 0)) {
-      return res.status(200).json(
-        buildFallbackResponse(latestLanguage, "no_product_match", {
-          sessionId,
-          productIntent,
-          policyIntent,
-          blogIntent,
-          latestLanguage,
-        })
-      );
     }
 
     const faqContext = summarizeFaqs(kb.faqs);
@@ -1438,7 +1301,7 @@ export default async function handler(req, res) {
           "Do not invent store policies. " +
           "Do not include any raw URL in the reply. " +
           "Only mention product cards if product cards will actually appear in this response. " +
-          "If no reliable answer is available, do not say that CyberHome does not sell the item and do not say you do not have information. The API will trigger a fallback contact form instead.",
+          "If uncertain, ask one short clarifying question.",
       },
     ];
 
@@ -1497,7 +1360,7 @@ export default async function handler(req, res) {
 - Keep the reply under 90 words.
 - Do not include any URL.
 - If product cards will appear, briefly confirm relevance and let the cards show details.
-- If no reliable answer is available, do not mention not selling, not available, or lacking information.
+- If no good answer is available, ask one short clarifying question.
 - Keep continuity with the conversation.`,
     });
 
@@ -1510,27 +1373,12 @@ export default async function handler(req, res) {
 
     const responseText =
       completion.choices?.[0]?.message?.content?.trim() ||
-      fallbackTextByLanguage(latestLanguage);
+      "I'm happy to help. Please tell me a bit more about what you're looking for.";
 
     const usage = completion?.usage || {};
     const inputTokens = Number(usage.prompt_tokens || 0);
     const outputTokens = Number(usage.completion_tokens || 0);
     const totalTokens = Number(usage.total_tokens || inputTokens + outputTokens);
-
-    if (containsDisallowedNoAnswer(responseText)) {
-      return res.status(200).json(
-        buildFallbackResponse(latestLanguage, "disallowed_no_answer", {
-          sessionId,
-          productIntent,
-          policyIntent,
-          blogIntent,
-          latestLanguage,
-          inputTokens,
-          outputTokens,
-          totalTokens,
-        })
-      );
-    }
 
     const fallbackCheck = shouldForceFallback({
       productIntent,
@@ -1580,7 +1428,6 @@ export default async function handler(req, res) {
         detailLink: "",
         detailLinkLabel: "",
         source: "ai",
-        version: CHAT_API_VERSION,
         showContactForm: false,
         fallbackTriggered: false,
         handoffToHuman: false,
@@ -1594,7 +1441,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       response:
-        fallbackTextByLanguage("en"),
+        "Sorry, the service is temporarily unavailable. Please leave your email and our colleague will follow up soon.",
       products: [],
       meta: {
         productsCount: 0,

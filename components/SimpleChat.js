@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V6.6";
+const SIMPLECHAT_VERSION = "V6.7";
 const USER_AVATAR = "You";
 const ASSISTANT_AVATAR = "AI";
 const IDLE_TIMEOUT_MS = 60 * 1000;
@@ -608,14 +608,60 @@ export default function SimpleChat() {
         content: data?.response || "Sorry, I could not generate a response.",
         createdAt: new Date().toISOString(),
         products: Array.isArray(data?.products) ? data.products : [],
-        meta: data?.meta || {},
+        meta: {
+          ...(data?.meta || {}),
+          showContactForm:
+            data?.showContactForm ??
+            data?.meta?.showContactForm ??
+            false,
+          handoffToHuman:
+            data?.handoffToHuman ??
+            data?.meta?.handoffToHuman ??
+            false,
+          fallbackTriggered:
+            data?.fallbackTriggered ??
+            data?.meta?.fallbackTriggered ??
+            false,
+        },
       };
 
       setMessages((prev) => [...prev.filter((m) => m.type !== "lead_form"), aiMsg]);
 
-      if (data?.meta?.showContactForm || data?.meta?.handoffToHuman) {
+      const aiText = String(data?.response || "");
+      const shouldShowLeadForm =
+        Boolean(data?.showContactForm) ||
+        Boolean(data?.handoffToHuman) ||
+        Boolean(data?.fallbackTriggered) ||
+        Boolean(data?.meta?.showContactForm) ||
+        Boolean(data?.meta?.handoffToHuman) ||
+        Boolean(data?.meta?.fallbackTriggered);
+
+      const looksLikeFallback =
+        aiText.includes(
+          "As an AI assistant, I can't answer this question accurately right now."
+        );
+
+      const disallowedNoAnswerPatterns = [
+        "we do not sell",
+        "we don't sell",
+        "i don't have information",
+        "not available",
+        "cannot find",
+        "sorry, but",
+        "sorry but",
+      ];
+
+      const lowerAiText = aiText.toLowerCase();
+      const disallowedHit = disallowedNoAnswerPatterns.some((p) =>
+        lowerAiText.includes(p)
+      );
+
+      if (shouldShowLeadForm || looksLikeFallback || disallowedHit) {
         const fallbackNote = text && !leadForm.note ? `Customer asked: ${text}` : "";
-        injectLeadForm(data?.meta?.reason || "ai_handoff", fallbackNote);
+        injectLeadForm(
+          data?.meta?.reason || "ai_handoff",
+          fallbackNote
+        );
       }
     } catch (error) {
       console.error("API error:", error);
