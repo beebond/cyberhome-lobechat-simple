@@ -17,11 +17,11 @@ if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
 // =========================
-// CyberHome AI Support V8.2
+// CyberHome AI Support V8.3
 // Direct-template-first + improved product search
 // =========================
 
-const CHAT_API_VERSION = "V8.2";
+const CHAT_API_VERSION = "V8.3";
 
 const rateMap = new Map();
 
@@ -474,6 +474,25 @@ function detectProductFamily(text, history = []) {
   }`.trim();
 
   if (
+    q.includes("paypal") ||
+    q.includes("apple pay") ||
+    q.includes("google pay") ||
+    q.includes("shop pay") ||
+    q.includes("klarna") ||
+    q.includes("installment") ||
+    q.includes("monitor") ||
+    q.includes("microwave") ||
+    q.includes("icecream machine") ||
+    q.includes("ice cream machine") ||
+    q.includes("ai system") ||
+    q.includes("smart home") ||
+    q.includes("app control") ||
+    q.includes("work with ai")
+  ) {
+    return "unsupported_or_unverified";
+  }
+
+  if (
     q.includes("health kettle") ||
     q.includes("health pot") ||
     q.includes("cup pot") ||
@@ -498,7 +517,19 @@ function detectProductFamily(text, history = []) {
     return "accessory";
   }
 
-  if (q.includes("yogurt maker") || q.includes("yogurt machine") || q.includes("greek yogurt") || q.includes("yogurt") || q.includes("酸奶")) return "yogurt_maker";
+  if (
+    q.includes("yogurt maker") ||
+    q.includes("yogurt machine") ||
+    q.includes("greek yogurt") ||
+    q.includes("black yogurt maker") ||
+    q.includes("4 in 1 yogurt maker") ||
+    q.includes("fermentation machine") ||
+    q.includes("probiotic yogurt") ||
+    q.includes("yogurt") ||
+    q.includes("酸奶")
+  ) {
+    return "yogurt_maker";
+  }
 
   if (
     q.includes("rice cooker") ||
@@ -521,6 +552,19 @@ function detectProductFamily(text, history = []) {
     return "rice_roll_steamer";
   }
 
+  if (
+    q.includes("dough maker") ||
+    q.includes("daugh maker") ||
+    q.includes("pasta maker") ||
+    q.includes("noodle maker") ||
+    q.includes("kneading machine") ||
+    q.includes("dough making") ||
+    q.includes("bread dough") ||
+    q.includes("pizza dough")
+  ) {
+    return "dough_maker";
+  }
+
   if (q.includes("blender") || q.includes("搅拌机")) return "blender";
   if (q.includes("air fryer")) return "air_fryer";
   if (q.includes("humidifier")) return "humidifier";
@@ -529,7 +573,16 @@ function detectProductFamily(text, history = []) {
   if (q.includes("bottle warmer") || q.includes("milk warmer") || q.includes("暖奶")) {
     return "bottle_warmer";
   }
-  if (q.includes("baby food maker") || q.includes("baby food processor") || q.includes("baby steamer blender") || q.includes("baby puree") || q.includes("baby food") || q.includes("辅食")) return "baby_food_maker";
+  if (
+    q.includes("baby food maker") ||
+    q.includes("baby food processor") ||
+    q.includes("baby steamer blender") ||
+    q.includes("baby food blender") ||
+    q.includes("baby food steamer") ||
+    q.includes("baby puree") ||
+    q.includes("baby food") ||
+    q.includes("辅食")
+  ) return "baby_food_maker";
   if (q.includes("nut milk") || q.includes("soy milk") || q.includes("oat milk")) {
     return "nut_milk_maker";
   }
@@ -600,7 +653,25 @@ function familyMatch(product, family) {
   }
 
   if (family === "baby_food_maker") {
-    return haystack.includes("baby food") || haystack.includes("baby puree") || haystack.includes("steamer and blender") || haystack.includes("baby care appliance");
+    return (
+      haystack.includes("baby food") ||
+      haystack.includes("baby puree") ||
+      haystack.includes("baby food blender") ||
+      haystack.includes("baby food steamer") ||
+      haystack.includes("baby food processor") ||
+      haystack.includes("steamer and blender") ||
+      haystack.includes("baby care appliance")
+    );
+  }
+
+  if (family === "dough_maker") {
+    return (
+      haystack.includes("dough maker") ||
+      haystack.includes("pasta maker") ||
+      haystack.includes("noodle maker") ||
+      haystack.includes("kneading") ||
+      haystack.includes("dough")
+    );
   }
 
   if (family === "air_purifier") {
@@ -615,7 +686,7 @@ function familyMatch(product, family) {
     return haystack.includes("juicer");
   }
 
-  if (family === "manual_request") {
+  if (family === "manual_request" || family === "unsupported_or_unverified") {
     return false;
   }
 
@@ -660,12 +731,28 @@ function buildSearchQueries(userMessage, history = []) {
     queries.push("yogurt maker");
     queries.push("greek yogurt maker");
     queries.push("fermentation machine");
+    queries.push("4 in 1 yogurt maker");
+    queries.push("black yogurt maker");
   }
 
   if (combined.includes("baby food") || combined.includes("辅食") || family === "baby_food_maker") {
     queries.push("baby food maker");
     queries.push("baby care appliance");
     queries.push("baby food steamer blender");
+    queries.push("baby food blender");
+    queries.push("baby food steamer");
+  }
+
+  if (
+    combined.includes("dough maker") ||
+    combined.includes("daugh maker") ||
+    combined.includes("pasta maker") ||
+    combined.includes("noodle maker") ||
+    family === "dough_maker"
+  ) {
+    queries.push("dough maker");
+    queries.push("pasta maker");
+    queries.push("noodle maker");
   }
 
   if (combined.includes("cup pot") || combined.includes("health kettle") || combined.includes("health pot") || combined.includes("medicine kettle") || combined.includes("herbal kettle") || combined.includes("养生壶") || family === "kettle") {
@@ -690,8 +777,7 @@ function buildSearchQueries(userMessage, history = []) {
     queries.push("fermentation");
   }
 
-
-  return [...new Set(queries)].slice(0, 6);
+  return [...new Set(queries)].slice(0, 8);
 }
 
 async function fetchShopifyProductImage(handle) {
@@ -783,8 +869,35 @@ function scoreProduct(product, userMessage, history = []) {
     score += 20;
   }
 
+  if (
+    (q.includes("black yogurt maker") || q.includes("4 in 1 yogurt maker")) &&
+    haystack.includes("yogurt")
+  ) {
+    score += 10;
+  }
+
+  if (haystack.includes("snj c10t1bk")) {
+    score += 6;
+  }
+
+  if (haystack.includes("snj c10h2")) {
+    score += 4;
+  }
+
   if ((q.includes("baby food") || q.includes("baby puree") || q.includes("辅食")) && (haystack.includes("baby food") || haystack.includes("baby puree") || haystack.includes("baby care appliance"))) {
     score += 18;
+  }
+
+  if (
+    (q.includes("dough maker") ||
+      q.includes("daugh maker") ||
+      q.includes("pasta maker") ||
+      q.includes("noodle maker")) &&
+    (haystack.includes("dough maker") ||
+      haystack.includes("pasta maker") ||
+      haystack.includes("noodle maker"))
+  ) {
+    score += 20;
   }
 
   if ((q.includes("health kettle") || q.includes("health pot") || q.includes("cup pot") || q.includes("medicine kettle") || q.includes("herbal kettle") || q.includes("养生壶")) && (haystack.includes("health kettle") || haystack.includes("health pot") || haystack.includes("medicine kettle") || haystack.includes("herbal kettle") || haystack.includes("tea maker") || haystack.includes("养生壶") || haystack.includes("kettle"))) {
@@ -818,22 +931,18 @@ function scoreProduct(product, userMessage, history = []) {
   }
 
   if ((q.includes("baby food") || q.includes("baby puree") || q.includes("辅食")) && !(haystack.includes("baby food") || haystack.includes("baby puree") || haystack.includes("baby care appliance"))) {
-    score -= 14;
+    score -= 12;
+  }
+
+  if ((q.includes("dough maker") || q.includes("daugh maker") || q.includes("pasta maker") || q.includes("noodle maker")) && !(haystack.includes("dough maker") || haystack.includes("pasta maker") || haystack.includes("noodle maker"))) {
+    score -= 12;
   }
 
   if (
-    (q.includes("bottle warmer") || q.includes("milk warmer")) &&
-    !(haystack.includes("bottle warmer") || haystack.includes("milk warmer"))
+    (q.includes("health kettle") || q.includes("health pot") || q.includes("cup pot") || q.includes("medicine kettle") || q.includes("herbal kettle") || q.includes("养生壶")) &&
+    !(haystack.includes("health kettle") || haystack.includes("health pot") || haystack.includes("medicine kettle") || haystack.includes("herbal kettle") || haystack.includes("tea maker") || haystack.includes("养生壶") || haystack.includes("kettle"))
   ) {
-    score -= 14;
-  }
-
-  if (q.includes("juicer") && !haystack.includes("juicer")) {
-    score -= 14;
-  }
-
-  if (q.includes("air purifier") && !haystack.includes("air purifier")) {
-    score -= 14;
+    score -= 12;
   }
 
   return score;
@@ -1269,6 +1378,18 @@ export default async function handler(req, res) {
     }
 
     const { productIntent, policyIntent, blogIntent } = detectIntent(userMessage, history);
+    const detectedFamily = detectProductFamily(userMessage, history);
+
+    if (detectedFamily === "unsupported_or_unverified") {
+      return res.status(200).json(
+        buildFallbackResponse(latestLanguage, "unsupported_or_unverified", {
+          sessionId,
+          productIntent,
+          policyIntent,
+          blogIntent,
+        })
+      );
+    }
 
     let kb = { faqs: [], products: [], policies: [], blogs: [] };
     try {
@@ -1544,8 +1665,8 @@ export default async function handler(req, res) {
         blogCount: 0,
         detailLink: "",
         detailLinkLabel: "",
-        moreLink: shouldReturnProducts && kb.products[0]?.product_type ? `${STORE_URL}/search?q=${encodeURIComponent(kb.products[0].product_type)}` : "",
-        moreLinkLabel: latestLanguage === "zh" ? "查看更多" : "More products",
+        moreLink: "",
+        moreLinkLabel: "More products",
         showContactForm: true,
         fallbackTriggered: true,
         handoffToHuman: true,
