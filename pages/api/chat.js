@@ -17,11 +17,11 @@ if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
 // =========================
-// CyberHome AI Support V8.1
+// CyberHome AI Support V8.2
 // Direct-template-first + improved product search
 // =========================
 
-const CHAT_API_VERSION = "V8.1";
+const CHAT_API_VERSION = "V8.2";
 
 const rateMap = new Map();
 
@@ -653,23 +653,28 @@ function buildSearchQueries(userMessage, history = []) {
     ? extractRecentContext(history)
     : "";
   const combined = `${q} ${context}`.trim();
+  const family = detectProductFamily(userMessage, history);
   const queries = [userMessage];
 
-  if (combined.includes("yogurt") || combined.includes("酸奶")) {
+  if (combined.includes("yogurt") || combined.includes("酸奶") || family === "yogurt_maker") {
     queries.push("yogurt maker");
     queries.push("greek yogurt maker");
+    queries.push("fermentation machine");
   }
 
-  if (combined.includes("baby food") || combined.includes("辅食")) {
+  if (combined.includes("baby food") || combined.includes("辅食") || family === "baby_food_maker") {
     queries.push("baby food maker");
+    queries.push("baby care appliance");
+    queries.push("baby food steamer blender");
   }
 
-  if (combined.includes("cup pot") || combined.includes("health kettle") || combined.includes("health pot") || combined.includes("medicine kettle") || combined.includes("herbal kettle") || combined.includes("养生壶")) {
+  if (combined.includes("cup pot") || combined.includes("health kettle") || combined.includes("health pot") || combined.includes("medicine kettle") || combined.includes("herbal kettle") || combined.includes("养生壶") || family === "kettle") {
     queries.push("health kettle");
     queries.push("health pot");
+    queries.push("medicine kettle");
   }
 
-  if (combined.includes("bottle warmer") || combined.includes("milk warmer")) {
+  if (combined.includes("bottle warmer") || combined.includes("milk warmer") || family === "bottle_warmer") {
     queries.push("bottle warmer");
   }
 
@@ -685,7 +690,37 @@ function buildSearchQueries(userMessage, history = []) {
     queries.push("fermentation");
   }
 
-  return [...new Set(queries)].slice(0, 4);
+
+  return [...new Set(queries)].slice(0, 6);
+}
+
+async function fetchShopifyProductImage(handle) {
+  const safeHandle = String(handle || "").trim();
+  if (!safeHandle) return "";
+  try {
+    const response = await fetchWithTimeout(`${STORE_URL}/products/${encodeURIComponent(safeHandle)}.js`, 4500);
+    if (!response.ok) return "";
+    const data = await response.json();
+    return (
+      data?.featured_image ||
+      (Array.isArray(data?.images) ? data.images[0] : "") ||
+      ""
+    );
+  } catch (e) {
+    return "";
+  }
+}
+
+async function hydrateProductImages(products = []) {
+  if (!Array.isArray(products) || products.length === 0) return [];
+  const hydrated = await Promise.all(
+    products.map(async (p) => {
+      if (p?.image) return p;
+      const fetchedImage = await fetchShopifyProductImage(p?.handle);
+      return fetchedImage ? { ...p, image: fetchedImage } : p;
+    })
+  );
+  return hydrated;
 }
 
 async function fetchWithTimeout(url, timeoutMs = 4500) {
@@ -1033,34 +1068,41 @@ function summarizeBlogs(blogs) {
 async function searchKnowledge(userMessage, history = []) {
   const queries = buildSearchQueries(userMessage, history);
   const family = detectProductFamily(userMessage, history);
+  const intent = detectIntent(userMessage, history);
 
-  const primary = await fetchSearch(queries[0]);
-  const results = [primary];
-
-  const primaryProductCount = Array.isArray(primary?.productMatches)
-    ? primary.productMatches.length
-    : 0;
-  const primaryFaqCount = Array.isArray(primary?.faqMatches)
-    ? primary.faqMatches.length
-    : 0;
-  const primaryPolicyCount = Array.isArray(primary?.policyMatches)
-    ? primary.policyMatches.length
-    : 0;
-  const primaryBlogCount = Array.isArray(primary?.blogMatches)
-    ? primary.blogMatches.length
-    : 0;
-
-  const shouldSecondarySearch =
-    queries.length > 1 &&
-    primaryProductCount < 2 &&
-    primaryFaqCount === 0 &&
-    primaryPolicyCount === 0 &&
-    primaryBlogCount === 0;
-
-  if (shouldSecondarySearch) {
+  const results = [];
+  for (const query of queries) {
+    if (!query) continue;
     try {
-      const secondary = await fetchSearch(queries[1]);
-      results.push(secondary);
+      const data = await fetchSearch(query);
+      results.push(data);
+
+      const cumulativeProducts = results.reduce((sum, item) => {
+        const arr = Array.isArray(item?.productMatches)
+          ? item.productMatches
+          : Array.isArray(item?.products)
+          ? item.products
+          : [];
+        return sum + arr.length;
+      }, 0);
+
+      const cumulativePolicies = results.reduce(
+        (sum, item) => sum + (Array.isArray(item?.policyMatches) ? item.policyMatches.length : 0),
+        0
+      );
+      const cumulativeBlogs = results.reduce(
+        (sum, item) => sum + (Array.isArray(item?.blogMatches) ? item.blogMatches.length : 0),
+        0
+      );
+
+      // For product-intent searches, keep trying product-family aliases until we collect enough products.
+      if (intent.productIntent) {
+        if (cumulativeProducts >= 3) break;
+        continue;
+      }
+
+      // For non-product searches, one strong result is enough.
+      if (cumulativePolicies > 0 || cumulativeBlogs > 0 || cumulativeProducts > 0) break;
     } catch (e) {}
   }
 
@@ -1115,6 +1157,7 @@ async function searchKnowledge(userMessage, history = []) {
   if (rankedProducts.length === 0) rankedProducts = normalizedProducts;
 
   rankedProducts = rankedProducts.slice(0, 3).map(({ _score, ...rest }) => rest);
+  rankedProducts = await hydrateProductImages(rankedProducts);
 
   return {
     faqs: allFaqs,
@@ -1242,6 +1285,22 @@ export default async function handler(req, res) {
     ) {
       return res.status(200).json(
         buildFallbackResponse(latestLanguage, "no_search_result", {
+          sessionId,
+          productIntent,
+          policyIntent,
+          blogIntent,
+        })
+      );
+    }
+
+    if (
+      productIntent &&
+      !policyIntent &&
+      !blogIntent &&
+      (!kb.products || kb.products.length === 0)
+    ) {
+      return res.status(200).json(
+        buildFallbackResponse(latestLanguage, "no_product_match", {
           sessionId,
           productIntent,
           policyIntent,
