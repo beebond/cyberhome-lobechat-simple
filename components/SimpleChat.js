@@ -1,26 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V9.2.2";
+const SIMPLECHAT_VERSION = "V9.2.3";
 const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
-
-/* Embedded logo to avoid broken image paths */
-const LOGO_URL =
-  "data:image/svg+xml;utf8," +
-  encodeURIComponent(`
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-      <defs>
-        <linearGradient id="cyberhome-g" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#ffb000"/>
-          <stop offset="28%" stop-color="#ff6a00"/>
-          <stop offset="55%" stop-color="#ff2db3"/>
-          <stop offset="78%" stop-color="#00d66b"/>
-          <stop offset="100%" stop-color="#17b7ff"/>
-        </linearGradient>
-      </defs>
-      <rect width="128" height="128" rx="26" fill="#0b0f17"/>
-      <path d="M64 16c5 0 10 1 14 4l27 15c10 6 16 16 16 27v5c0 11-6 21-16 27L78 109c-9 5-19 5-28 0L23 94C13 88 7 78 7 67v-5c0-11 6-21 16-27l27-15c4-3 9-4 14-4zm0 11c-3 0-7 1-10 3L29 44c-7 4-11 10-11 18v5c0 8 4 14 11 18l25 14c6 4 14 4 20 0l13-7-31-18a8 8 0 0 1 8-14h38V44L74 30c-3-2-7-3-10-3z" fill="url(#cyberhome-g)"/>
-    </svg>
-  `);
+const LOGO_URL = "data:image/png;base64,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";
 
 const BRAND_BLUE = "#19a8e8";
 const HEADER_BG = "#171717";
@@ -62,6 +44,31 @@ function sanitizeLeadText(value, max = 3000) {
   return String(value || "").replace(/\0/g, "").trim().slice(0, max);
 }
 
+function resolveDetailLink(meta) {
+  if (!meta) return null;
+  return (
+    meta.detailLink ||
+    meta.link ||
+    meta.url ||
+    meta.policyLink ||
+    meta.blogLink ||
+    meta.articleLink ||
+    null
+  );
+}
+
+function resolveDetailLabel(meta) {
+  if (!meta) return "View Details";
+  return (
+    meta.detailLinkLabel ||
+    meta.linkLabel ||
+    meta.policyLinkLabel ||
+    meta.blogLinkLabel ||
+    meta.articleLinkLabel ||
+    "View Details"
+  );
+}
+
 function LogoBadge({ size = 24, rounded = 8 }) {
   return (
     <img
@@ -74,38 +81,14 @@ function LogoBadge({ size = 24, rounded = 8 }) {
         objectFit: "cover",
         display: "block",
         flexShrink: 0,
-        background: "#fff",
+        background: "#0b0f17",
       }}
     />
   );
 }
 
 function Avatar({ role }) {
-  const isUser = role === "user";
-  if (isUser) {
-    return (
-      <div
-        style={{
-          width: 36,
-          height: 36,
-          borderRadius: 999,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 12,
-          fontWeight: 700,
-          flexShrink: 0,
-          background: "#dbeafe",
-          color: "#1d4ed8",
-          border: "1px solid #bfdbfe",
-        }}
-        title="You"
-      >
-        You
-      </div>
-    );
-  }
-
+  if (role === "user") return null;
   return (
     <div
       style={{
@@ -123,6 +106,35 @@ function Avatar({ role }) {
       title="CyberHome AI"
     >
       <LogoBadge size={22} rounded={999} />
+    </div>
+  );
+}
+
+function DetailLinkButton({ href, label }) {
+  if (!href) return null;
+  return (
+    <div style={{ marginTop: 12 }}>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#2563eb",
+          color: "#fff",
+          padding: "10px 16px",
+          borderRadius: 12,
+          textDecoration: "none",
+          fontWeight: 700,
+          fontSize: 14,
+          lineHeight: 1.2,
+          fontFamily: "Arial, Helvetica, sans-serif",
+        }}
+      >
+        {label || "View Details"}
+      </a>
     </div>
   );
 }
@@ -147,6 +159,7 @@ function MoreLinkButton({ href, label }) {
           fontWeight: 700,
           fontSize: 14,
           lineHeight: 1.2,
+          fontFamily: "Arial, Helvetica, sans-serif",
         }}
       >
         {label || "More products"}
@@ -207,8 +220,9 @@ function ProductCard({ product }) {
             padding: "10px 16px",
             borderRadius: 12,
             textDecoration: "none",
-            fontWeight: 600,
+            fontWeight: 700,
             display: "inline-block",
+            fontFamily: "Arial, Helvetica, sans-serif",
           }}
         >
           View Details
@@ -236,7 +250,7 @@ function InlineLeadForm({
             value={form.name}
             onChange={(e) => onChange("name", e.target.value)}
             placeholder="Your name"
-            style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 12, padding: "12px 14px", fontSize: 15, outline: "none" }}
+            style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 12, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: "Arial, Helvetica, sans-serif" }}
           />
         </div>
 
@@ -247,7 +261,7 @@ function InlineLeadForm({
             onChange={(e) => onChange("email", e.target.value)}
             placeholder="you@example.com"
             type="email"
-            style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 12, padding: "12px 14px", fontSize: 15, outline: "none" }}
+            style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 12, padding: "12px 14px", fontSize: 15, outline: "none", fontFamily: "Arial, Helvetica, sans-serif" }}
           />
         </div>
 
@@ -258,7 +272,7 @@ function InlineLeadForm({
             onChange={(e) => onChange("note", e.target.value)}
             placeholder="Tell us what you need help with."
             rows={4}
-            style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 12, padding: "12px 14px", fontSize: 15, outline: "none", resize: "vertical" }}
+            style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 12, padding: "12px 14px", fontSize: 15, outline: "none", resize: "vertical", fontFamily: "Arial, Helvetica, sans-serif" }}
           />
         </div>
       </div>
@@ -306,6 +320,7 @@ function InlineLeadForm({
               cursor: "pointer",
               fontWeight: 700,
               padding: "0 14px",
+              fontFamily: "Arial, Helvetica, sans-serif",
             }}
           >
             Cancel
@@ -326,6 +341,7 @@ function InlineLeadForm({
             cursor: submitting ? "not-allowed" : "pointer",
             fontWeight: 700,
             fontSize: 20,
+            fontFamily: "Arial, Helvetica, sans-serif",
           }}
         >
           ↑
@@ -339,6 +355,8 @@ function InlineRatingPanel({ rating, feedback, onRatingChange, onFeedbackChange,
   const options = ["😞", "😐", "🙂", "😊", "😍"];
   return (
     <div style={{ marginTop: 12, background: "#fff", border: "1px solid #e5e7eb", borderRadius: 16, padding: 16 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: TEXT, marginBottom: 12 }}>Please rate the conversation</div>
+
       <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
         {options.map((emoji, idx) => {
           const active = rating === idx + 1;
@@ -354,6 +372,7 @@ function InlineRatingPanel({ rating, feedback, onRatingChange, onFeedbackChange,
                 background: "#fff",
                 fontSize: 24,
                 cursor: "pointer",
+                fontFamily: "Arial, Helvetica, sans-serif",
               }}
             >
               {emoji}
@@ -367,7 +386,7 @@ function InlineRatingPanel({ rating, feedback, onRatingChange, onFeedbackChange,
         onChange={(e) => onFeedbackChange(e.target.value)}
         placeholder="Your feedback..."
         rows={4}
-        style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 12, padding: "12px 14px", fontSize: 15, outline: "none", resize: "vertical" }}
+        style={{ width: "100%", border: "1px solid #d1d5db", borderRadius: 12, padding: "12px 14px", fontSize: 15, outline: "none", resize: "vertical", fontFamily: "Arial, Helvetica, sans-serif" }}
       />
 
       <div style={{ display: "grid", gridTemplateColumns: "58px 1fr 58px", gap: 10, marginTop: 16 }}>
@@ -384,6 +403,7 @@ function InlineRatingPanel({ rating, feedback, onRatingChange, onFeedbackChange,
             cursor: "pointer",
             fontWeight: 700,
             padding: "0 14px",
+            fontFamily: "Arial, Helvetica, sans-serif",
           }}
         >
           Cancel
@@ -401,6 +421,7 @@ function InlineRatingPanel({ rating, feedback, onRatingChange, onFeedbackChange,
             cursor: "pointer",
             fontWeight: 700,
             fontSize: 20,
+            fontFamily: "Arial, Helvetica, sans-serif",
           }}
         >
           ↑
@@ -477,7 +498,9 @@ export default function SimpleChat() {
 
   useEffect(() => {
     resetIdleTimer();
-    return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current); };
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
   }, [idlePromptEnabled, leadSubmitted, messages]);
 
   function touchActivity() {
@@ -772,6 +795,7 @@ export default function SimpleChat() {
             padding: "0 18px 0 12px",
             color: "white",
             fontWeight: 800,
+            fontFamily: "Arial, Helvetica, sans-serif",
           }}
         >
           <LogoBadge size={24} rounded={8} />
@@ -795,6 +819,7 @@ export default function SimpleChat() {
           zIndex: 2147483645,
           display: isOpen ? "flex" : "none",
           flexDirection: "column",
+          fontFamily: "Arial, Helvetica, sans-serif",
         }}
       >
         <div style={{ background: HEADER_BG, color: "#fff", padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
@@ -805,13 +830,13 @@ export default function SimpleChat() {
           <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => setIsExpanded((v) => !v)}
-              style={{ width: 42, height: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: 22, cursor: "pointer" }}
+              style={{ width: 42, height: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: 22, cursor: "pointer", fontFamily: "Arial, Helvetica, sans-serif" }}
             >
               {isExpanded ? "❐" : "▢"}
             </button>
             <button
               onClick={() => setIsOpen(false)}
-              style={{ width: 42, height: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: 24, cursor: "pointer" }}
+              style={{ width: 42, height: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: 24, cursor: "pointer", fontFamily: "Arial, Helvetica, sans-serif" }}
             >
               −
             </button>
@@ -863,6 +888,9 @@ export default function SimpleChat() {
               );
             }
 
+            const detailLink = resolveDetailLink(msg.meta);
+            const detailLabel = resolveDetailLabel(msg.meta);
+
             return (
               <div key={msg.id} style={{ marginBottom: 24 }}>
                 <div style={{ display: "flex", justifyContent: isUser ? "flex-end" : "flex-start", gap: 10, alignItems: "flex-start" }}>
@@ -887,6 +915,8 @@ export default function SimpleChat() {
                       {formatTime(msg.createdAt)}
                     </div>
 
+                    {msg.role === "assistant" && detailLink ? <DetailLinkButton href={detailLink} label={detailLabel} /> : null}
+
                     {msg.role === "assistant" && Array.isArray(msg.products) && msg.products.length > 0 ? (
                       <div style={{ marginTop: 10 }}>
                         <div style={{ display: "inline-block", background: "#dcfce7", color: "#15803d", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
@@ -899,7 +929,6 @@ export default function SimpleChat() {
                       </div>
                     ) : null}
                   </div>
-                  {isUser ? <Avatar role="user" /> : null}
                 </div>
               </div>
             );
@@ -918,7 +947,7 @@ export default function SimpleChat() {
               onFocus={touchActivity}
               placeholder="Type your message..."
               rows={1}
-              style={{ width: "100%", resize: "vertical", minHeight: 52, borderRadius: 16, border: "1px solid #d1d5db", padding: "14px 16px", fontSize: 16, outline: "none", boxSizing: "border-box" }}
+              style={{ width: "100%", resize: "vertical", minHeight: 52, borderRadius: 16, border: "1px solid #d1d5db", padding: "14px 16px", fontSize: 16, outline: "none", boxSizing: "border-box", fontFamily: "Arial, Helvetica, sans-serif" }}
             />
 
             <div style={{ display: "grid", gridTemplateColumns: "58px 1fr 58px", gap: 10, alignItems: "stretch", marginTop: 10 }}>
@@ -952,6 +981,7 @@ export default function SimpleChat() {
                   fontWeight: 700,
                   cursor: loading ? "not-allowed" : "pointer",
                   padding: "0 14px",
+                  fontFamily: "Arial, Helvetica, sans-serif",
                 }}
               >
                 End Chat
@@ -969,6 +999,7 @@ export default function SimpleChat() {
                   color: "#fff",
                   fontSize: 18,
                   cursor: loading ? "not-allowed" : "pointer",
+                  fontFamily: "Arial, Helvetica, sans-serif",
                 }}
               >
                 ↑
