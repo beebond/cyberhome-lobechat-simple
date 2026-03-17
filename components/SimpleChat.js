@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-const STORAGE_KEY = "cyberhome_simplechat_v9_2";
+const STORAGE_KEY = "cyberhome_simplechat_v9_3";
 const SUPPORT_EMAIL = "support@cyberhome.app";
-
 const BRAND_BLUE = "#19a8e8";
-const HEADER_BG = "#06080d";
+const HEADER_BG = "#07090e";
 const SURFACE = "#f3f3f5";
 const TEXT = "#1f2937";
 const MUTED = "#8a94a6";
@@ -73,9 +72,7 @@ function appendDateDividers(items) {
   return out;
 }
 function persistState(payload) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  } catch (e) {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch (e) {}
 }
 function restoreState() {
   try {
@@ -97,41 +94,36 @@ function normalizeProducts(products = []) {
 }
 function buildInitialMessages() {
   const ts = nowIso();
-  return [
-    {
-      id: uid("assistant"),
-      role: "assistant",
-      senderType: "ai",
-      text: "Hi, I’m CyberHome AI. Ask me anything about CyberHome appliances, shipping, usage, or support.",
-      createdAt: ts,
-      products: [],
-      attachments: [],
-      meta: { source: "system_welcome" },
-    },
-  ];
+  return [{
+    id: uid("assistant"),
+    role: "assistant",
+    senderType: "ai",
+    text: "Hi, I’m CyberHome AI. Ask me anything about CyberHome appliances, shipping, usage, or support.",
+    createdAt: ts,
+    products: [],
+    attachments: [],
+    meta: { source: "system_welcome" },
+  }];
 }
-
 function Avatar({ type = "ai" }) {
-  const badge = type === "human" ? "H" : "AI";
   return (
-    <div className={`sc-avatar sc-avatar-${type}`}>
+    <div className={`sc-avatar ${type}`}>
       <img src={LOGO_URL} alt="CyberHome" />
-      <span className="sc-avatar-badge">{badge}</span>
+      <span className="sc-avatar-badge">{type === "human" ? "H" : "AI"}</span>
     </div>
   );
 }
-
 function ProductCard({ product }) {
   return (
     <div className="sc-product-card">
-      <div className="sc-product-thumb">{product.image ? <img src={product.image} alt={product.title} /> : null}</div>
+      <div className="sc-product-thumb">
+        {product.image ? <img src={product.image} alt={product.title} /> : null}
+      </div>
       <div className="sc-product-content">
         <div className="sc-product-title">{product.title}</div>
         {product.model ? <div className="sc-product-model">Model: {product.model}</div> : null}
         {product.url ? (
-          <a className="sc-product-btn" href={product.url} target="_blank" rel="noreferrer">
-            View Details
-          </a>
+          <a className="sc-product-btn" href={product.url} target="_blank" rel="noreferrer">View Details</a>
         ) : (
           <button className="sc-product-btn" type="button">View Details</button>
         )}
@@ -139,27 +131,24 @@ function ProductCard({ product }) {
     </div>
   );
 }
-
 function LeadForm({
-  email, setEmail, note, setNote, attachments, onFileChange, removeAttachment, onSubmit, onCancel, submitting
+  email, setEmail, note, setNote, attachments, onFileChange, removeAttachment, onSubmit, onCancel, submitting,
 }) {
   return (
-    <div className="sc-overlay-card">
-      <h3>Leave your contact information</h3>
-      <p>
+    <div className="sc-sheet">
+      <div className="sc-sheet-title">Leave your contact information</div>
+      <div className="sc-sheet-text">
         As an AI assistant, I can’t answer this question accurately right now. Please email <strong>{SUPPORT_EMAIL}</strong> or leave your message below, and our colleague will get back to you soon.
-      </p>
+      </div>
       <label>Email</label>
       <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
       <label>Message</label>
       <textarea rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder="How can we help?" />
       <label>Attachment (optional)</label>
-      <div className="sc-overlay-attach-row">
-        <label className="sc-file-btn">
-          📎 Add file
-          <input type="file" hidden onChange={onFileChange} />
-        </label>
-      </div>
+      <label className="sc-file-btn">
+        📎 Add file
+        <input type="file" hidden onChange={onFileChange} />
+      </label>
       {attachments.length > 0 ? (
         <div className="sc-chip-list">
           {attachments.map((file) => (
@@ -170,37 +159,30 @@ function LeadForm({
           ))}
         </div>
       ) : null}
-      <div className="sc-overlay-actions">
-        <button type="button" className="sc-secondary-btn" onClick={onCancel} disabled={submitting}>Cancel</button>
-        <button type="button" className="sc-primary-btn" onClick={onSubmit} disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button>
+      <div className="sc-sheet-actions">
+        <button type="button" className="sc-action-btn secondary" onClick={onCancel} disabled={submitting}>Cancel</button>
+        <button type="button" className="sc-action-btn primary" onClick={onSubmit} disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button>
       </div>
     </div>
   );
 }
-
 function RatingCard({ rating, setRating, feedback, setFeedback, onSubmit, onCancel, submitting }) {
-  const emojis = [
-    { v: 1, label: "😞" },
-    { v: 2, label: "😐" },
-    { v: 3, label: "🙂" },
-    { v: 4, label: "😊" },
-    { v: 5, label: "😍" },
+  const options = [
+    { v: 1, label: "😞" }, { v: 2, label: "😐" }, { v: 3, label: "🙂" }, { v: 4, label: "😊" }, { v: 5, label: "😍" },
   ];
   return (
-    <div className="sc-overlay-card">
-      <h3>Please rate this conversation</h3>
+    <div className="sc-sheet">
+      <div className="sc-sheet-title">Please rate this conversation</div>
       <div className="sc-rating-row">
-        {emojis.map((item) => (
-          <button key={item.v} type="button" className={`sc-rating-btn ${rating === item.v ? "active" : ""}`} onClick={() => setRating(item.v)}>
-            {item.label}
-          </button>
+        {options.map((o) => (
+          <button key={o.v} type="button" className={`sc-rating-btn ${rating === o.v ? "active" : ""}`} onClick={() => setRating(o.v)}>{o.label}</button>
         ))}
       </div>
       <label>Tell us more</label>
       <textarea rows={4} value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Tell us more..." />
-      <div className="sc-overlay-actions">
-        <button type="button" className="sc-secondary-btn" onClick={onCancel} disabled={submitting}>Cancel</button>
-        <button type="button" className="sc-primary-btn" onClick={onSubmit} disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button>
+      <div className="sc-sheet-actions">
+        <button type="button" className="sc-action-btn secondary" onClick={onCancel} disabled={submitting}>Cancel</button>
+        <button type="button" className="sc-action-btn primary" onClick={onSubmit} disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button>
       </div>
     </div>
   );
@@ -216,13 +198,11 @@ export default function SimpleChat() {
   const [composerAttachments, setComposerAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
-
   const [showLeadForm, setShowLeadForm] = useState(false);
   const [leadEmail, setLeadEmail] = useState(restored?.leadEmail || "");
   const [leadNote, setLeadNote] = useState(restored?.leadNote || "");
   const [leadSubmitting, setLeadSubmitting] = useState(false);
   const [lastFallbackReason, setLastFallbackReason] = useState("");
-
   const [showRatingCard, setShowRatingCard] = useState(false);
   const [ratingValue, setRatingValue] = useState(0);
   const [ratingFeedback, setRatingFeedback] = useState("");
@@ -244,8 +224,7 @@ export default function SimpleChat() {
   useEffect(() => {
     if (!textareaRef.current) return;
     textareaRef.current.style.height = "auto";
-    const next = Math.min(textareaRef.current.scrollHeight, 180);
-    textareaRef.current.style.height = `${Math.max(next, 72)}px`;
+    textareaRef.current.style.height = `${Math.max(64, Math.min(textareaRef.current.scrollHeight, 160))}px`;
   }, [input]);
 
   const renderedMessages = useMemo(() => appendDateDividers(messages), [messages]);
@@ -295,15 +274,12 @@ export default function SimpleChat() {
           const data = await res.json();
           if (!res.ok || !data?.success) return reject(new Error(data?.error || "Upload failed"));
           resolve(data.file);
-        } catch (e) {
-          reject(e);
-        }
+        } catch (e) { reject(e); }
       };
       reader.onerror = () => reject(new Error("File read failed"));
       reader.readAsDataURL(file);
     });
   }
-
   async function handleComposerAttachmentChange(e) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -318,7 +294,6 @@ export default function SimpleChat() {
       e.target.value = "";
     }
   }
-
   function removeComposerAttachment(id) {
     setComposerAttachments((prev) => prev.filter((f) => f.id !== id));
   }
@@ -339,11 +314,7 @@ export default function SimpleChat() {
     try {
       const payloadHistory = messages
         .filter((m) => m.type !== "date-divider")
-        .map((m) => ({
-          role: m.role === "assistant" ? "assistant" : "user",
-          content: m.text || "",
-          meta: m.meta || {},
-        }));
+        .map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.text || "", meta: m.meta || {} }));
 
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -355,7 +326,6 @@ export default function SimpleChat() {
           attachments: attachmentsForMessage,
         }),
       });
-
       const data = await res.json();
       const reply = data?.response || "Sorry, something went wrong.";
       const products = normalizeProducts(data?.products || []);
@@ -384,12 +354,7 @@ export default function SimpleChat() {
       setLeadSubmitting(true);
       const transcript = messages
         .filter((m) => m.type !== "date-divider")
-        .map((m) => ({
-          role: m.role,
-          content: m.text,
-          createdAt: m.createdAt,
-          meta: m.meta || {},
-        }));
+        .map((m) => ({ role: m.role, content: m.text, createdAt: m.createdAt, meta: m.meta || {} }));
 
       const res = await fetch("/api/lead", {
         method: "POST",
@@ -402,10 +367,9 @@ export default function SimpleChat() {
           transcript,
           fallbackReason: lastFallbackReason,
           pageUrl: typeof window !== "undefined" ? window.location.href : "",
-          source: "simple_chat_v9_2",
+          source: "simple_chat_v9_3",
         }),
       });
-
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || "Submit failed");
       setShowLeadForm(false);
@@ -429,7 +393,7 @@ export default function SimpleChat() {
           rating: ratingValue,
           feedback: ratingFeedback.trim(),
           pageUrl: typeof window !== "undefined" ? window.location.href : "",
-          source: "simple_chat_v9_2",
+          source: "simple_chat_v9_3",
         }),
       });
       const data = await res.json();
@@ -444,10 +408,6 @@ export default function SimpleChat() {
     }
   }
 
-  function endChat() {
-    setShowRatingCard(true);
-  }
-
   function renderMessage(message) {
     if (message.type === "date-divider") {
       return <div className="sc-date-divider" key={message.id}>{message.text}</div>;
@@ -456,11 +416,7 @@ export default function SimpleChat() {
     const products = normalizeProducts(message.products);
     return (
       <div className={`sc-row ${isUser ? "user" : "assistant"}`} key={message.id}>
-        {!isUser ? (
-          <div className="sc-left-col">
-            <Avatar type={message.senderType || "ai"} />
-          </div>
-        ) : null}
+        {!isUser ? <div className="sc-left-col"><Avatar type={message.senderType || "ai"} /></div> : null}
         <div className={`sc-bubble-wrap ${isUser ? "user" : "assistant"}`}>
           {!isUser ? <div className="sc-sender-name">{message.senderType === "human" ? "CyberHome Support" : "CyberHome AI"}</div> : null}
           {message.text ? <div className={`sc-bubble ${isUser ? "user" : "assistant"}`}>{message.text}</div> : null}
@@ -468,7 +424,7 @@ export default function SimpleChat() {
             <div className="sc-msg-attachments">
               {message.attachments.map((att) => (
                 <a className="sc-msg-attachment" key={att.id || att.url} href={att.url} target="_blank" rel="noreferrer">
-                  {att.mimeType?.startsWith("image/") ? <img src={att.url} alt={att.name || "attachment"} /> : <span className="sc-file-icon">📎</span>}
+                  {att.mimeType?.startsWith("image/") ? <img src={att.url} alt={att.name || "attachment"} /> : <span>📎</span>}
                   <span>{att.name || "Attachment"}</span>
                 </a>
               ))}
@@ -495,7 +451,7 @@ export default function SimpleChat() {
     <>
       {!isOpen ? (
         <button className="sc-launcher" onClick={() => setIsOpen(true)} aria-label="Open chat">
-          <span className="sc-launcher-icon">💬</span>
+          <img src={LOGO_URL} alt="CyberHome" />
         </button>
       ) : null}
 
@@ -504,12 +460,8 @@ export default function SimpleChat() {
           <div className="sc-header">
             <div className="sc-header-left">
               <img src={LOGO_URL} alt="CyberHome" className="sc-header-logo" />
-              <div className="sc-header-copy">
-                <div className="sc-header-title">CyberHome Support</div>
-                <div className="sc-header-subtitle">AI + Human assistance</div>
-              </div>
+              <div className="sc-header-title">CyberHome Support</div>
             </div>
-
             <div className="sc-header-actions">
               <button className="sc-header-btn" type="button" onClick={() => setIsExpanded((v) => !v)} aria-label="Expand">
                 {isExpanded ? "❐" : "▢"}
@@ -520,8 +472,11 @@ export default function SimpleChat() {
 
           <div className="sc-body" ref={scrollerRef}>
             {renderedMessages.map(renderMessage)}
+            {conversationEnded ? <div className="sc-ended-label">Conversation ended.</div> : null}
+          </div>
 
-            {showLeadForm ? (
+          {showLeadForm ? (
+            <div className="sc-bottom-sheet">
               <LeadForm
                 email={leadEmail}
                 setEmail={setLeadEmail}
@@ -534,9 +489,11 @@ export default function SimpleChat() {
                 onCancel={() => setShowLeadForm(false)}
                 submitting={leadSubmitting}
               />
-            ) : null}
+            </div>
+          ) : null}
 
-            {showRatingCard ? (
+          {showRatingCard ? (
+            <div className="sc-bottom-sheet">
               <RatingCard
                 rating={ratingValue}
                 setRating={setRatingValue}
@@ -546,10 +503,8 @@ export default function SimpleChat() {
                 onCancel={() => setShowRatingCard(false)}
                 submitting={ratingSubmitting}
               />
-            ) : null}
-
-            {conversationEnded ? <div className="sc-ended-label">Conversation ended.</div> : null}
-          </div>
+            </div>
+          ) : null}
 
           {!overlayMode ? (
             <div className="sc-footer">
@@ -563,7 +518,6 @@ export default function SimpleChat() {
                   ))}
                 </div>
               ) : null}
-
               <div className="sc-composer">
                 <textarea
                   ref={textareaRef}
@@ -578,18 +532,18 @@ export default function SimpleChat() {
                     }
                   }}
                 />
-
-                <label className="sc-attach-btn" title="Add attachment">
-                  📎
-                  <input type="file" hidden onChange={handleComposerAttachmentChange} />
-                </label>
-
-                <button className="sc-end-btn" type="button" onClick={endChat}>End Chat</button>
-
-                <button className="sc-send-btn" type="button" onClick={sendMessage} disabled={sending || uploading}>↑</button>
+                <div className="sc-composer-actions">
+                  <label className="sc-attach-btn" title="Add attachment">
+                    📎
+                    <input type="file" hidden onChange={handleComposerAttachmentChange} />
+                  </label>
+                  <button className="sc-end-btn" type="button" onClick={() => setShowRatingCard(true)}>End Chat</button>
+                  <button className="sc-send-btn" type="button" onClick={sendMessage} disabled={sending || uploading}>↑</button>
+                </div>
               </div>
             </div>
           ) : null}
+
         </div>
       ) : null}
 
@@ -599,8 +553,8 @@ export default function SimpleChat() {
           right: 18px;
           bottom: 18px;
           z-index: 2147483646;
-          width: 62px;
-          height: 62px;
+          width: 60px;
+          height: 60px;
           border: none;
           border-radius: 999px;
           background: ${BRAND_BLUE};
@@ -610,8 +564,13 @@ export default function SimpleChat() {
           display: flex;
           align-items: center;
           justify-content: center;
+          padding: 0;
         }
-        .sc-launcher-icon { font-size: 26px; line-height: 1; }
+        .sc-launcher img {
+          width: 26px;
+          height: 26px;
+          border-radius: 8px;
+        }
 
         .sc-shell {
           position: fixed;
@@ -635,10 +594,11 @@ export default function SimpleChat() {
           height: min(920px, calc(100dvh - 40px));
           border-radius: 30px;
         }
+
         .sc-header {
           background: ${HEADER_BG};
           color: white;
-          padding: 18px 20px 16px;
+          padding: 16px 18px 14px;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -647,7 +607,7 @@ export default function SimpleChat() {
         .sc-header-left {
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 10px;
           min-width: 0;
         }
         .sc-header-logo {
@@ -657,27 +617,24 @@ export default function SimpleChat() {
           object-fit: cover;
           flex: 0 0 auto;
         }
-        .sc-header-copy { min-width: 0; }
         .sc-header-title {
           font-size: 16px;
-          line-height: 1.1;
           font-weight: 800;
+          line-height: 1.1;
           letter-spacing: -0.01em;
-        }
-        .sc-header-subtitle {
-          margin-top: 4px;
-          font-size: 11px;
-          opacity: 0.9;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .sc-header-actions {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8px;
           flex: 0 0 auto;
         }
         .sc-header-btn {
-          width: 44px;
-          height: 44px;
+          width: 42px;
+          height: 42px;
           border-radius: 14px;
           border: 1px solid rgba(255,255,255,0.12);
           background: rgba(255,255,255,0.06);
@@ -690,19 +647,18 @@ export default function SimpleChat() {
         .sc-body {
           flex: 1;
           overflow-y: auto;
-          padding: 18px 14px 24px;
+          padding: 16px 14px 18px;
           background: ${SURFACE};
         }
         .sc-date-divider {
           width: fit-content;
-          margin: 0 auto 18px;
+          margin: 0 auto 16px;
           font-size: 12px;
           color: ${MUTED};
           background: rgba(255,255,255,0.55);
           padding: 10px 16px;
           border-radius: 999px;
         }
-
         .sc-row {
           display: flex;
           gap: 12px;
@@ -710,27 +666,23 @@ export default function SimpleChat() {
           align-items: flex-start;
         }
         .sc-row.user { justify-content: flex-end; }
-        .sc-left-col {
-          flex: 0 0 auto;
-          padding-top: 8px;
-        }
+        .sc-left-col { flex: 0 0 auto; padding-top: 6px; }
 
         .sc-avatar {
-          width: 36px;
-          height: 36px;
+          width: 34px;
+          height: 34px;
           position: relative;
           border-radius: 999px;
           overflow: hidden;
           background: #091731;
-          box-shadow: inset 0 0 0 2px rgba(255,255,255,0.08);
         }
         .sc-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .sc-avatar-badge {
           position: absolute;
           right: -2px;
           bottom: -2px;
-          width: 16px;
-          height: 16px;
+          width: 14px;
+          height: 14px;
           border-radius: 999px;
           background: #29d391;
           color: #fff;
@@ -742,9 +694,7 @@ export default function SimpleChat() {
           border: 2px solid ${SURFACE};
         }
 
-        .sc-bubble-wrap {
-          max-width: min(78%, 740px);
-        }
+        .sc-bubble-wrap { max-width: min(78%, 740px); }
         .sc-bubble-wrap.user {
           display: flex;
           flex-direction: column;
@@ -758,21 +708,14 @@ export default function SimpleChat() {
         }
         .sc-bubble {
           border-radius: 24px;
-          padding: 18px 20px;
+          padding: 16px 18px;
           font-size: 17px;
           line-height: 1.55;
           word-break: break-word;
           box-shadow: 0 3px 12px rgba(0,0,0,0.03);
         }
-        .sc-bubble.assistant {
-          background: #ffffff;
-          color: ${TEXT};
-        }
-        .sc-bubble.user {
-          background: ${BRAND_BLUE};
-          color: #fff;
-          border-bottom-right-radius: 10px;
-        }
+        .sc-bubble.assistant { background: #fff; color: ${TEXT}; }
+        .sc-bubble.user { background: ${BRAND_BLUE}; color: #fff; border-bottom-right-radius: 10px; }
         .sc-time {
           font-size: 12px;
           color: ${MUTED};
@@ -805,7 +748,6 @@ export default function SimpleChat() {
           height: 34px;
           border-radius: 8px;
           object-fit: cover;
-          flex: 0 0 auto;
         }
 
         .sc-products-block { margin-top: 12px; }
@@ -852,7 +794,7 @@ export default function SimpleChat() {
           color: ${MUTED};
           font-size: 14px;
         }
-        .sc-product-btn, .sc-more-products-btn, .sc-primary-btn, .sc-secondary-btn {
+        .sc-product-btn, .sc-more-products-btn {
           appearance: none;
           text-decoration: none;
           border: none;
@@ -881,35 +823,38 @@ export default function SimpleChat() {
           font-weight: 800;
         }
 
-        .sc-overlay-card {
-          margin: 8px 0 20px 50px;
+        .sc-bottom-sheet {
+          border-top: 1px solid rgba(0,0,0,0.06);
+          background: rgba(255,255,255,0.96);
+          padding: 12px;
+          box-shadow: 0 -8px 30px rgba(0,0,0,0.08);
+        }
+        .sc-sheet {
           background: #fff;
-          border-radius: 24px;
-          padding: 20px;
           border: 1px solid rgba(0,0,0,0.06);
-          box-shadow: 0 6px 16px rgba(0,0,0,0.03);
-          max-width: min(82%, 760px);
+          border-radius: 20px;
+          padding: 16px;
         }
-        .sc-overlay-card h3 {
-          margin: 0 0 12px;
+        .sc-sheet-title {
           font-size: 18px;
-          line-height: 1.2;
+          font-weight: 800;
           color: #101827;
+          margin-bottom: 10px;
         }
-        .sc-overlay-card p {
-          margin: 0 0 14px;
+        .sc-sheet-text {
           color: #475467;
-          line-height: 1.6;
+          line-height: 1.55;
           font-size: 14px;
+          margin-bottom: 12px;
         }
-        .sc-overlay-card label {
+        .sc-sheet label {
           display: block;
-          margin: 14px 0 8px;
+          margin: 12px 0 6px;
           font-size: 14px;
           font-weight: 700;
           color: #344054;
         }
-        .sc-overlay-card input, .sc-overlay-card textarea {
+        .sc-sheet input, .sc-sheet textarea {
           width: 100%;
           border: 1px solid ${BORDER};
           border-radius: 16px;
@@ -919,11 +864,6 @@ export default function SimpleChat() {
           background: #fff;
           resize: vertical;
           box-sizing: border-box;
-        }
-        .sc-overlay-attach-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
         }
         .sc-file-btn {
           display: inline-flex;
@@ -936,6 +876,7 @@ export default function SimpleChat() {
           cursor: pointer;
           font-weight: 700;
           color: ${TEXT};
+          margin-top: 4px;
         }
         .sc-chip-list {
           display: flex;
@@ -962,28 +903,29 @@ export default function SimpleChat() {
           color: #667085;
           font-size: 16px;
         }
-        .sc-overlay-actions {
-          margin-top: 18px;
-          display: flex;
-          justify-content: flex-end;
-          gap: 12px;
+
+        .sc-sheet-actions {
+          margin-top: 14px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
         }
-        .sc-secondary-btn {
+        .sc-action-btn {
+          height: 54px;
+          border-radius: 18px;
+          font-weight: 800;
+          cursor: pointer;
+          border: 1px solid ${BORDER};
+        }
+        .sc-action-btn.secondary {
           background: #fff;
           color: #344054;
-          border: 1px solid ${BORDER};
-          padding: 12px 18px;
-          border-radius: 16px;
-          font-weight: 800;
         }
-        .sc-primary-btn {
+        .sc-action-btn.primary {
           background: #081733;
           color: #fff;
-          padding: 12px 20px;
-          border-radius: 16px;
-          font-weight: 800;
+          border-color: #081733;
         }
-
         .sc-rating-row {
           display: flex;
           gap: 10px;
@@ -1016,16 +958,10 @@ export default function SimpleChat() {
           backdrop-filter: blur(8px);
           padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
         }
-        .sc-composer {
-          display: grid;
-          grid-template-columns: 1fr 58px 122px 58px;
-          gap: 10px;
-          align-items: end;
-        }
         .sc-composer textarea {
           width: 100%;
           min-height: 72px;
-          max-height: 180px;
+          max-height: 160px;
           resize: none;
           border-radius: 20px;
           border: 1px solid ${BORDER};
@@ -1035,9 +971,15 @@ export default function SimpleChat() {
           background: #fff;
           box-sizing: border-box;
         }
+        .sc-composer-actions {
+          margin-top: 10px;
+          display: grid;
+          grid-template-columns: 58px 1fr 58px;
+          gap: 10px;
+        }
         .sc-attach-btn, .sc-end-btn, .sc-send-btn {
-          height: 56px;
-          border-radius: 20px;
+          height: 54px;
+          border-radius: 18px;
           border: 1px solid ${BORDER};
           background: #fff;
           display: inline-flex;
@@ -1048,7 +990,6 @@ export default function SimpleChat() {
           cursor: pointer;
         }
         .sc-attach-btn { font-size: 26px; }
-        .sc-end-btn { font-size: 15px; }
         .sc-send-btn {
           background: ${BRAND_BLUE};
           color: #fff;
@@ -1060,8 +1001,12 @@ export default function SimpleChat() {
           .sc-launcher {
             right: 14px;
             bottom: 14px;
-            width: 58px;
-            height: 58px;
+            width: 56px;
+            height: 56px;
+          }
+          .sc-launcher img {
+            width: 24px;
+            height: 24px;
           }
           .sc-shell, .sc-shell.expanded {
             inset: 0;
@@ -1075,37 +1020,23 @@ export default function SimpleChat() {
             border: none;
           }
           .sc-header {
-            padding: 12px 12px 10px;
+            padding: 12px;
           }
           .sc-header-logo {
-            width: 20px;
-            height: 20px;
-            border-radius: 6px;
+            width: 18px;
+            height: 18px;
           }
           .sc-header-title {
             font-size: 15px;
           }
-          .sc-header-subtitle {
-            display: none;
-          }
-          .sc-header-actions { gap: 8px; }
           .sc-header-btn {
             width: 38px;
             height: 38px;
             border-radius: 12px;
-            font-size: 22px;
           }
-
           .sc-body {
             padding: 12px 10px 14px;
           }
-          .sc-date-divider {
-            font-size: 11px;
-            padding: 8px 12px;
-            margin-bottom: 14px;
-          }
-
-          .sc-left-col { padding-top: 6px; }
           .sc-avatar {
             width: 28px;
             height: 28px;
@@ -1115,22 +1046,14 @@ export default function SimpleChat() {
             height: 14px;
             font-size: 7px;
           }
-
-          .sc-bubble-wrap { max-width: 80%; }
+          .sc-bubble-wrap {
+            max-width: 82%;
+          }
           .sc-bubble {
             font-size: 15px;
             padding: 14px 16px;
             border-radius: 20px;
           }
-          .sc-sender-name {
-            font-size: 11px;
-            margin-left: 4px;
-          }
-          .sc-time {
-            font-size: 11px;
-            margin-top: 6px;
-          }
-
           .sc-product-card {
             grid-template-columns: 66px 1fr;
             gap: 12px;
@@ -1144,45 +1067,41 @@ export default function SimpleChat() {
           }
           .sc-product-title { font-size: 15px; }
           .sc-product-model { font-size: 13px; }
-
-          .sc-overlay-card {
-            margin: 0 0 16px 0;
-            max-width: 100%;
-            border-radius: 22px;
-            padding: 16px;
+          .sc-bottom-sheet {
+            padding: 10px;
           }
-          .sc-overlay-card h3 { font-size: 16px; }
-          .sc-overlay-card p {
-            font-size: 13px;
-            margin-bottom: 10px;
+          .sc-sheet {
+            border-radius: 18px;
+            padding: 14px;
           }
-          .sc-overlay-card label {
-            font-size: 13px;
-            margin: 12px 0 6px;
-          }
-          .sc-overlay-card input, .sc-overlay-card textarea {
+          .sc-sheet-title {
             font-size: 16px;
+          }
+          .sc-sheet-text {
+            font-size: 13px;
+          }
+          .sc-sheet label {
+            font-size: 13px;
+          }
+          .sc-sheet input, .sc-sheet textarea {
             padding: 12px 14px;
             border-radius: 14px;
           }
-
           .sc-footer {
             padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
           }
-          .sc-composer {
-            grid-template-columns: 1fr 56px 108px 56px;
+          .sc-composer textarea {
+            min-height: 84px;
+            border-radius: 18px;
+          }
+          .sc-composer-actions {
+            grid-template-columns: 56px 1fr 56px;
             gap: 8px;
           }
-          .sc-composer textarea {
-            min-height: 82px;
-            border-radius: 18px;
-            padding: 12px 14px;
-          }
-          .sc-attach-btn, .sc-end-btn, .sc-send-btn {
+          .sc-attach-btn, .sc-end-btn, .sc-send-btn, .sc-action-btn {
             height: 56px;
-            border-radius: 18px;
+            border-radius: 16px;
           }
-          .sc-end-btn { font-size: 14px; }
         }
       `}</style>
     </>
