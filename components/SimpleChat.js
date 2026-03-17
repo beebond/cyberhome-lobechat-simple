@@ -1,14 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V9.2";
-const USER_AVATAR = "You";
-const ASSISTANT_AVATAR = "AI";
+const SIMPLECHAT_VERSION = "V9.2.2";
 const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 
+/* Embedded logo to avoid broken image paths */
+const LOGO_URL =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+      <defs>
+        <linearGradient id="cyberhome-g" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#ffb000"/>
+          <stop offset="28%" stop-color="#ff6a00"/>
+          <stop offset="55%" stop-color="#ff2db3"/>
+          <stop offset="78%" stop-color="#00d66b"/>
+          <stop offset="100%" stop-color="#17b7ff"/>
+        </linearGradient>
+      </defs>
+      <rect width="128" height="128" rx="26" fill="#0b0f17"/>
+      <path d="M64 16c5 0 10 1 14 4l27 15c10 6 16 16 16 27v5c0 11-6 21-16 27L78 109c-9 5-19 5-28 0L23 94C13 88 7 78 7 67v-5c0-11 6-21 16-27l27-15c4-3 9-4 14-4zm0 11c-3 0-7 1-10 3L29 44c-7 4-11 10-11 18v5c0 8 4 14 11 18l25 14c6 4 14 4 20 0l13-7-31-18a8 8 0 0 1 8-14h38V44L74 30c-3-2-7-3-10-3z" fill="url(#cyberhome-g)"/>
+    </svg>
+  `);
+
 const BRAND_BLUE = "#19a8e8";
-const SURFACE = "#f3f4f6";
-const BORDER = "#d1d5db";
 const HEADER_BG = "#171717";
+const SURFACE = "#f3f4f6";
 const TEXT = "#1f2937";
 const MUTED = "#6b7280";
 
@@ -46,8 +62,50 @@ function sanitizeLeadText(value, max = 3000) {
   return String(value || "").replace(/\0/g, "").trim().slice(0, max);
 }
 
+function LogoBadge({ size = 24, rounded = 8 }) {
+  return (
+    <img
+      src={LOGO_URL}
+      alt="CyberHome"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: rounded,
+        objectFit: "cover",
+        display: "block",
+        flexShrink: 0,
+        background: "#fff",
+      }}
+    />
+  );
+}
+
 function Avatar({ role }) {
   const isUser = role === "user";
+  if (isUser) {
+    return (
+      <div
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 999,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 12,
+          fontWeight: 700,
+          flexShrink: 0,
+          background: "#dbeafe",
+          color: "#1d4ed8",
+          border: "1px solid #bfdbfe",
+        }}
+        title="You"
+      >
+        You
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -57,43 +115,14 @@ function Avatar({ role }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: 12,
-        fontWeight: 700,
         flexShrink: 0,
-        background: isUser ? "#dbeafe" : "#111827",
-        color: isUser ? "#1d4ed8" : "#ffffff",
-        border: isUser ? "1px solid #bfdbfe" : "1px solid #1f2937",
+        background: "#111827",
+        border: "1px solid #1f2937",
+        overflow: "hidden",
       }}
-      title={isUser ? "You" : "CyberHome AI"}
+      title="CyberHome AI"
     >
-      {isUser ? USER_AVATAR : ASSISTANT_AVATAR}
-    </div>
-  );
-}
-
-function DetailLinkButton({ href, label }) {
-  if (!href) return null;
-  return (
-    <div style={{ marginTop: 10 }}>
-      <a
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-        style={{
-          display: "inline-block",
-          background: "#2563eb",
-          color: "#fff",
-          padding: "10px 16px",
-          borderRadius: 12,
-          textDecoration: "none",
-          fontWeight: 600,
-          fontSize: 14,
-          lineHeight: 1.2,
-          boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
-        }}
-      >
-        {label || "View Details"}
-      </a>
+      <LogoBadge size={22} rounded={999} />
     </div>
   );
 }
@@ -107,7 +136,9 @@ function MoreLinkButton({ href, label }) {
         target="_blank"
         rel="noreferrer"
         style={{
-          display: "inline-block",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
           background: "#111827",
           color: "#fff",
           padding: "10px 16px",
@@ -118,7 +149,7 @@ function MoreLinkButton({ href, label }) {
           lineHeight: 1.2,
         }}
       >
-        {label || "More"}
+        {label || "More products"}
       </a>
     </div>
   );
@@ -128,8 +159,8 @@ function ProductCard({ product }) {
   if (!product) return null;
   const title = product.title || "Product";
   const image = product.image || product.image_url || "";
-  const price = product.price ?? "";
   const model = product.model || product.product_id || "";
+  const price = product.price ?? "";
   const url = buildProductUrl(product);
 
   return (
@@ -154,11 +185,17 @@ function ProductCard({ product }) {
           flexShrink: 0,
         }}
       >
-        {image ? <img src={image} alt={title} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+        {image ? (
+          <img
+            src={image}
+            alt={title}
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+          />
+        ) : null}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.35, marginBottom: 6 }}>{title}</div>
-        {model ? <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 8 }}>Model: {model}</div> : null}
+        {model ? <div style={{ fontSize: 14, color: MUTED, marginBottom: 8 }}>Model: {model}</div> : null}
         {price !== "" ? <div style={{ fontSize: 16, color: "#d97706", fontWeight: 700, marginBottom: 12 }}>{price}</div> : null}
         <a
           href={url}
@@ -431,15 +468,17 @@ export default function SimpleChat() {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     if (!idlePromptEnabled || hasTriggeredIdleRef.current || leadSubmitted) return;
     idleTimerRef.current = setTimeout(() => {
-      hasTriggeredIdleRef.current = true;
-      injectRatingPanel("idle_timeout");
+      if (!messages.some((m) => m.type === "lead_form" || m.type === "rating_panel")) {
+        hasTriggeredIdleRef.current = true;
+        injectRatingPanel("idle_timeout");
+      }
     }, IDLE_TIMEOUT_MS);
   }
 
   useEffect(() => {
     resetIdleTimer();
     return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current); };
-  }, [idlePromptEnabled, leadSubmitted]);
+  }, [idlePromptEnabled, leadSubmitted, messages]);
 
   function touchActivity() {
     resetIdleTimer();
@@ -456,6 +495,7 @@ export default function SimpleChat() {
   function injectLeadForm(reason, presetNote = "") {
     removeExistingLeadForms();
     removeExistingRatingPanels();
+    setShowRatingPanel(false);
     setLeadError("");
     setLeadSubmitted(false);
     if (presetNote) {
@@ -707,6 +747,8 @@ export default function SimpleChat() {
 
   if (!mounted) return null;
 
+  const hasOverlayPanel = messages.some((m) => m.type === "lead_form" || m.type === "rating_panel");
+
   return (
     <>
       {!isOpen ? (
@@ -732,7 +774,7 @@ export default function SimpleChat() {
             fontWeight: 800,
           }}
         >
-          <div style={{ width: 24, height: 24, borderRadius: 8, background: "#fff", color: BRAND_BLUE, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 12 }}>AI</div>
+          <LogoBadge size={24} rounded={8} />
           <span style={{ fontSize: 16, lineHeight: 1 }}>CHAT</span>
         </button>
       ) : null}
@@ -756,7 +798,10 @@ export default function SimpleChat() {
         }}
       >
         <div style={{ background: HEADER_BG, color: "#fff", padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-          <div style={{ fontWeight: 700, fontSize: 18 }}>CyberHome Support</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <LogoBadge size={24} rounded={8} />
+            <div style={{ fontWeight: 700, fontSize: 18 }}>CyberHome Support</div>
+          </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
               onClick={() => setIsExpanded((v) => !v)}
@@ -826,7 +871,7 @@ export default function SimpleChat() {
                     <div
                       style={{
                         background: isUser ? "#2196f3" : "#fff",
-                        color: isUser ? "#fff" : "#1f2937",
+                        color: isUser ? "#fff" : TEXT,
                         padding: "14px 16px",
                         borderRadius: 18,
                         fontSize: 16,
@@ -842,8 +887,6 @@ export default function SimpleChat() {
                       {formatTime(msg.createdAt)}
                     </div>
 
-                    {msg.role === "assistant" && msg.meta?.detailLink ? <DetailLinkButton href={msg.meta.detailLink} label={msg.meta.detailLinkLabel || "View Details"} /> : null}
-
                     {msg.role === "assistant" && Array.isArray(msg.products) && msg.products.length > 0 ? (
                       <div style={{ marginTop: 10 }}>
                         <div style={{ display: "inline-block", background: "#dcfce7", color: "#15803d", padding: "4px 10px", borderRadius: 999, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
@@ -852,7 +895,7 @@ export default function SimpleChat() {
                         {msg.products.map((product, idx) => (
                           <ProductCard key={product?.id || product?.handle || idx} product={product} />
                         ))}
-                        <MoreLinkButton href={msg.meta?.moreLink} label={msg.meta?.moreLinkLabel || "More"} />
+                        <MoreLinkButton href={msg.meta?.moreLink} label={msg.meta?.moreLinkLabel || "More products"} />
                       </div>
                     ) : null}
                   </div>
@@ -862,12 +905,12 @@ export default function SimpleChat() {
             );
           })}
 
-          {loading ? <div style={{ color: "#6b7280", fontSize: 14 }}>Thinking...</div> : null}
+          {loading ? <div style={{ color: MUTED, fontSize: 14 }}>Thinking...</div> : null}
           <div ref={bottomRef} />
         </div>
 
-        {!showRatingPanel && (
-          <div style={{ padding: 16, background: "#f3f4f6", borderTop: "1px solid #e5e7eb" }}>
+        {!hasOverlayPanel && (
+          <div style={{ padding: 16, background: SURFACE, borderTop: "1px solid #e5e7eb" }}>
             <textarea
               value={input}
               onChange={handleInputChange}
