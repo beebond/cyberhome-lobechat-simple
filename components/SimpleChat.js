@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-const STORAGE_KEY = "cyberhome_simplechat_v9_3";
+const STORAGE_KEY = "cyberhome_simplechat_v9_3_1";
 const SUPPORT_EMAIL = "support@cyberhome.app";
 const BRAND_BLUE = "#19a8e8";
 const HEADER_BG = "#07090e";
@@ -29,12 +29,8 @@ const LOGO_URL = `data:image/svg+xml;charset=utf-8,${LOGO_SVG}`;
 function uid(prefix = "id") {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
-function nowIso() {
-  return new Date().toISOString();
-}
-function safeArray(v) {
-  return Array.isArray(v) ? v : [];
-}
+function nowIso() { return new Date().toISOString(); }
+function safeArray(v) { return Array.isArray(v) ? v : []; }
 function formatTime(input) {
   const d = new Date(input);
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -42,14 +38,9 @@ function formatTime(input) {
 function formatDateDivider(input) {
   const d = new Date(input);
   const today = new Date();
-  const sameDay =
-    d.getFullYear() === today.getFullYear() &&
-    d.getMonth() === today.getMonth() &&
-    d.getDate() === today.getDate();
-  if (sameDay) {
-    return `Today · ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-  }
-  return d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  const sameDay = d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth() && d.getDate() === today.getDate();
+  return sameDay ? `Today · ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` :
+    d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 function appendDateDividers(items) {
   const out = [];
@@ -58,29 +49,21 @@ function appendDateDividers(items) {
     const d = new Date(item.createdAt || Date.now());
     const dayKey = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
     if (dayKey !== prevDay) {
-      out.push({
-        id: uid("date"),
-        role: "system",
-        type: "date-divider",
-        text: formatDateDivider(d),
-        createdAt: d.toISOString(),
-      });
+      out.push({ id: uid("date"), role: "system", type: "date-divider", text: formatDateDivider(d), createdAt: d.toISOString() });
       prevDay = dayKey;
     }
     out.push(item);
   }
   return out;
 }
-function persistState(payload) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch (e) {}
-}
 function restoreState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    return null;
-  }
+  } catch { return null; }
+}
+function persistState(payload) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch {}
 }
 function normalizeProducts(products = []) {
   return safeArray(products).map((p) => ({
@@ -105,6 +88,7 @@ function buildInitialMessages() {
     meta: { source: "system_welcome" },
   }];
 }
+
 function Avatar({ type = "ai" }) {
   return (
     <div className={`sc-avatar ${type}`}>
@@ -113,6 +97,7 @@ function Avatar({ type = "ai" }) {
     </div>
   );
 }
+
 function ProductCard({ product }) {
   return (
     <div className="sc-product-card">
@@ -131,24 +116,17 @@ function ProductCard({ product }) {
     </div>
   );
 }
-function LeadForm({
-  email, setEmail, note, setNote, attachments, onFileChange, removeAttachment, onSubmit, onCancel, submitting,
-}) {
+
+function LeadSheet({ email, setEmail, note, setNote, attachments, onFileChange, removeAttachment, onSubmit, onCancel, submitting }) {
   return (
-    <div className="sc-sheet">
-      <div className="sc-sheet-title">Leave your contact information</div>
-      <div className="sc-sheet-text">
+    <div className="sc-sheet-card">
+      <div className="sc-sheet-copy">
         As an AI assistant, I can’t answer this question accurately right now. Please email <strong>{SUPPORT_EMAIL}</strong> or leave your message below, and our colleague will get back to you soon.
       </div>
-      <label>Email</label>
-      <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
-      <label>Message</label>
-      <textarea rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder="How can we help?" />
-      <label>Attachment (optional)</label>
-      <label className="sc-file-btn">
-        📎 Add file
-        <input type="file" hidden onChange={onFileChange} />
-      </label>
+
+      <input className="sc-sheet-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+      <textarea className="sc-sheet-textarea" rows={4} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Your message..." />
+
       {attachments.length > 0 ? (
         <div className="sc-chip-list">
           {attachments.map((file) => (
@@ -159,30 +137,34 @@ function LeadForm({
           ))}
         </div>
       ) : null}
+
       <div className="sc-sheet-actions">
-        <button type="button" className="sc-action-btn secondary" onClick={onCancel} disabled={submitting}>Cancel</button>
-        <button type="button" className="sc-action-btn primary" onClick={onSubmit} disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button>
+        <label className="sc-attach-btn">
+          📎
+          <input type="file" hidden onChange={onFileChange} />
+        </label>
+        <button type="button" className="sc-end-btn" onClick={onCancel}>Cancel</button>
+        <button type="button" className="sc-send-btn" onClick={onSubmit} disabled={submitting}>{submitting ? "…" : "↑"}</button>
       </div>
     </div>
   );
 }
-function RatingCard({ rating, setRating, feedback, setFeedback, onSubmit, onCancel, submitting }) {
-  const options = [
-    { v: 1, label: "😞" }, { v: 2, label: "😐" }, { v: 3, label: "🙂" }, { v: 4, label: "😊" }, { v: 5, label: "😍" },
-  ];
+
+function RatingSheet({ rating, setRating, feedback, setFeedback, onSubmit, onCancel, submitting }) {
+  const options = ["😞","😐","🙂","😊","😍"];
   return (
-    <div className="sc-sheet">
-      <div className="sc-sheet-title">Please rate this conversation</div>
+    <div className="sc-sheet-card">
       <div className="sc-rating-row">
-        {options.map((o) => (
-          <button key={o.v} type="button" className={`sc-rating-btn ${rating === o.v ? "active" : ""}`} onClick={() => setRating(o.v)}>{o.label}</button>
+        {options.map((emoji, idx) => (
+          <button key={emoji} type="button" className={`sc-rating-btn ${rating === idx + 1 ? "active" : ""}`} onClick={() => setRating(idx + 1)}>
+            {emoji}
+          </button>
         ))}
       </div>
-      <label>Tell us more</label>
-      <textarea rows={4} value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Tell us more..." />
+      <textarea className="sc-sheet-textarea" rows={4} value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Your feedback..." />
       <div className="sc-sheet-actions">
-        <button type="button" className="sc-action-btn secondary" onClick={onCancel} disabled={submitting}>Cancel</button>
-        <button type="button" className="sc-action-btn primary" onClick={onSubmit} disabled={submitting}>{submitting ? "Submitting..." : "Submit"}</button>
+        <button type="button" className="sc-end-btn" onClick={onCancel}>Cancel</button>
+        <button type="button" className="sc-send-btn" onClick={onSubmit} disabled={submitting}>{submitting ? "…" : "↑"}</button>
       </div>
     </div>
   );
@@ -224,7 +206,7 @@ export default function SimpleChat() {
   useEffect(() => {
     if (!textareaRef.current) return;
     textareaRef.current.style.height = "auto";
-    textareaRef.current.style.height = `${Math.max(64, Math.min(textareaRef.current.scrollHeight, 160))}px`;
+    textareaRef.current.style.height = `${Math.max(72, Math.min(textareaRef.current.scrollHeight, 180))}px`;
   }, [input]);
 
   const renderedMessages = useMemo(() => appendDateDividers(messages), [messages]);
@@ -233,28 +215,10 @@ export default function SimpleChat() {
     setMessages((prev) => [...prev, msg]);
   }
   function pushAssistant(text, extra = {}) {
-    pushMessage({
-      id: uid("assistant"),
-      role: "assistant",
-      senderType: extra.senderType || "ai",
-      text,
-      createdAt: nowIso(),
-      products: extra.products || [],
-      attachments: extra.attachments || [],
-      meta: extra.meta || {},
-    });
+    pushMessage({ id: uid("assistant"), role: "assistant", senderType: extra.senderType || "ai", text, createdAt: nowIso(), products: extra.products || [], attachments: extra.attachments || [], meta: extra.meta || {} });
   }
   function pushUser(text, extra = {}) {
-    pushMessage({
-      id: uid("user"),
-      role: "user",
-      senderType: "user",
-      text,
-      createdAt: nowIso(),
-      products: [],
-      attachments: extra.attachments || [],
-      meta: extra.meta || {},
-    });
+    pushMessage({ id: uid("user"), role: "user", senderType: "user", text, createdAt: nowIso(), products: [], attachments: extra.attachments || [], meta: extra.meta || {} });
   }
 
   async function uploadFile(file) {
@@ -265,11 +229,7 @@ export default function SimpleChat() {
           const res = await fetch("/api/upload", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              fileName: file.name,
-              mimeType: file.type,
-              dataUrl: reader.result,
-            }),
+            body: JSON.stringify({ fileName: file.name, mimeType: file.type, dataUrl: reader.result }),
           });
           const data = await res.json();
           if (!res.ok || !data?.success) return reject(new Error(data?.error || "Upload failed"));
@@ -287,12 +247,8 @@ export default function SimpleChat() {
       setUploading(true);
       const uploaded = await uploadFile(file);
       setComposerAttachments((prev) => [...prev, uploaded]);
-    } catch (e2) {
-      alert(e2.message || "Upload failed");
-    } finally {
-      setUploading(false);
-      e.target.value = "";
-    }
+    } catch (e2) { alert(e2.message || "Upload failed"); }
+    finally { setUploading(false); e.target.value = ""; }
   }
   function removeComposerAttachment(id) {
     setComposerAttachments((prev) => prev.filter((f) => f.id !== id));
@@ -312,19 +268,16 @@ export default function SimpleChat() {
     setSending(true);
 
     try {
-      const payloadHistory = messages
-        .filter((m) => m.type !== "date-divider")
-        .map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.text || "", meta: m.meta || {} }));
+      const payloadHistory = messages.filter((m) => m.type !== "date-divider").map((m) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.text || "",
+        meta: m.meta || {},
+      }));
 
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text || "[Attachment sent]",
-          history: payloadHistory,
-          sessionId,
-          attachments: attachmentsForMessage,
-        }),
+        body: JSON.stringify({ message: text || "[Attachment sent]", history: payloadHistory, sessionId, attachments: attachmentsForMessage }),
       });
       const data = await res.json();
       const reply = data?.response || "Sorry, something went wrong.";
@@ -336,10 +289,8 @@ export default function SimpleChat() {
         setLeadNote(`Customer asked: ${text || "[Attachment sent]"}`);
         setLastFallbackReason(data?.meta?.reason || "");
       }
-    } catch (e) {
-      pushAssistant("Sorry, there was a temporary issue. Please try again or leave us a message below.", {
-        meta: { fallbackTriggered: true, reason: "client_error" },
-      });
+    } catch {
+      pushAssistant("Sorry, there was a temporary issue. Please try again or leave us a message below.", { meta: { fallbackTriggered: true, reason: "client_error" } });
       setShowLeadForm(true);
       setLeadNote(`Customer asked: ${text || "[Attachment sent]"}`);
       setLastFallbackReason("client_error");
@@ -352,33 +303,21 @@ export default function SimpleChat() {
     if (!leadEmail.trim()) return alert("Please enter your email.");
     try {
       setLeadSubmitting(true);
-      const transcript = messages
-        .filter((m) => m.type !== "date-divider")
-        .map((m) => ({ role: m.role, content: m.text, createdAt: m.createdAt, meta: m.meta || {} }));
-
+      const transcript = messages.filter((m) => m.type !== "date-divider").map((m) => ({ role: m.role, content: m.text, createdAt: m.createdAt, meta: m.meta || {} }));
       const res = await fetch("/api/lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sessionId,
-          email: leadEmail.trim(),
-          note: leadNote.trim(),
-          attachments: composerAttachments,
-          transcript,
-          fallbackReason: lastFallbackReason,
-          pageUrl: typeof window !== "undefined" ? window.location.href : "",
-          source: "simple_chat_v9_3",
+          sessionId, email: leadEmail.trim(), note: leadNote.trim(), attachments: composerAttachments,
+          transcript, fallbackReason: lastFallbackReason, pageUrl: typeof window !== "undefined" ? window.location.href : "", source: "simple_chat_v9_3_1",
         }),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || "Submit failed");
       setShowLeadForm(false);
       pushAssistant("Thank you. Your contact information has been received, and our colleague will get back to you soon.");
-    } catch (e) {
-      alert(e.message || "Submit failed");
-    } finally {
-      setLeadSubmitting(false);
-    }
+    } catch (e) { alert(e.message || "Submit failed"); }
+    finally { setLeadSubmitting(false); }
   }
 
   async function submitRating() {
@@ -386,32 +325,20 @@ export default function SimpleChat() {
     try {
       setRatingSubmitting(true);
       const res = await fetch("/api/rating", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          rating: ratingValue,
-          feedback: ratingFeedback.trim(),
-          pageUrl: typeof window !== "undefined" ? window.location.href : "",
-          source: "simple_chat_v9_3",
-        }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, rating: ratingValue, feedback: ratingFeedback.trim(), pageUrl: typeof window !== "undefined" ? window.location.href : "", source: "simple_chat_v9_3_1" }),
       });
       const data = await res.json();
       if (!res.ok || !data?.success) throw new Error(data?.error || "Rating submit failed");
       setShowRatingCard(false);
       setConversationEnded(true);
       pushAssistant("Thanks for your feedback.");
-    } catch (e) {
-      alert(e.message || "Rating submit failed");
-    } finally {
-      setRatingSubmitting(false);
-    }
+    } catch (e) { alert(e.message || "Rating submit failed"); }
+    finally { setRatingSubmitting(false); }
   }
 
   function renderMessage(message) {
-    if (message.type === "date-divider") {
-      return <div className="sc-date-divider" key={message.id}>{message.text}</div>;
-    }
+    if (message.type === "date-divider") return <div className="sc-date-divider" key={message.id}>{message.text}</div>;
     const isUser = message.role === "user";
     const products = normalizeProducts(message.products);
     return (
@@ -420,6 +347,7 @@ export default function SimpleChat() {
         <div className={`sc-bubble-wrap ${isUser ? "user" : "assistant"}`}>
           {!isUser ? <div className="sc-sender-name">{message.senderType === "human" ? "CyberHome Support" : "CyberHome AI"}</div> : null}
           {message.text ? <div className={`sc-bubble ${isUser ? "user" : "assistant"}`}>{message.text}</div> : null}
+
           {safeArray(message.attachments).length > 0 ? (
             <div className="sc-msg-attachments">
               {message.attachments.map((att) => (
@@ -430,14 +358,13 @@ export default function SimpleChat() {
               ))}
             </div>
           ) : null}
+
           {products.length > 0 ? (
             <div className="sc-products-block">
               <div className="sc-products-label">Products Available</div>
               {products.map((product) => <ProductCard key={product.id} product={product} />)}
               {message.meta?.moreLink ? (
-                <a className="sc-more-products-btn" href={message.meta.moreLink} target="_blank" rel="noreferrer">
-                  {message.meta.moreLinkLabel || "More products"}
-                </a>
+                <a className="sc-more-products-btn" href={message.meta.moreLink} target="_blank" rel="noreferrer">{message.meta.moreLinkLabel || "More products"}</a>
               ) : null}
             </div>
           ) : null}
@@ -463,9 +390,7 @@ export default function SimpleChat() {
               <div className="sc-header-title">CyberHome Support</div>
             </div>
             <div className="sc-header-actions">
-              <button className="sc-header-btn" type="button" onClick={() => setIsExpanded((v) => !v)} aria-label="Expand">
-                {isExpanded ? "❐" : "▢"}
-              </button>
+              <button className="sc-header-btn" type="button" onClick={() => setIsExpanded((v) => !v)} aria-label="Expand">{isExpanded ? "❐" : "▢"}</button>
               <button className="sc-header-btn" type="button" onClick={() => setIsOpen(false)} aria-label="Minimize">−</button>
             </div>
           </div>
@@ -477,7 +402,7 @@ export default function SimpleChat() {
 
           {showLeadForm ? (
             <div className="sc-bottom-sheet">
-              <LeadForm
+              <LeadSheet
                 email={leadEmail}
                 setEmail={setLeadEmail}
                 note={leadNote}
@@ -494,7 +419,7 @@ export default function SimpleChat() {
 
           {showRatingCard ? (
             <div className="sc-bottom-sheet">
-              <RatingCard
+              <RatingSheet
                 rating={ratingValue}
                 setRating={setRatingValue}
                 feedback={ratingFeedback}
@@ -518,6 +443,7 @@ export default function SimpleChat() {
                   ))}
                 </div>
               ) : null}
+
               <div className="sc-composer">
                 <textarea
                   ref={textareaRef}
@@ -533,7 +459,7 @@ export default function SimpleChat() {
                   }}
                 />
                 <div className="sc-composer-actions">
-                  <label className="sc-attach-btn" title="Add attachment">
+                  <label className="sc-attach-btn">
                     📎
                     <input type="file" hidden onChange={handleComposerAttachmentChange} />
                   </label>
@@ -543,7 +469,6 @@ export default function SimpleChat() {
               </div>
             </div>
           ) : null}
-
         </div>
       ) : null}
 
@@ -553,12 +478,11 @@ export default function SimpleChat() {
           right: 18px;
           bottom: 18px;
           z-index: 2147483646;
-          width: 60px;
-          height: 60px;
+          width: 58px;
+          height: 58px;
           border: none;
           border-radius: 999px;
           background: ${BRAND_BLUE};
-          color: #fff;
           box-shadow: 0 16px 38px rgba(0,0,0,.18);
           cursor: pointer;
           display: flex;
@@ -566,11 +490,7 @@ export default function SimpleChat() {
           justify-content: center;
           padding: 0;
         }
-        .sc-launcher img {
-          width: 26px;
-          height: 26px;
-          border-radius: 8px;
-        }
+        .sc-launcher img { width: 24px; height: 24px; border-radius: 8px; }
 
         .sc-shell {
           position: fixed;
@@ -588,369 +508,137 @@ export default function SimpleChat() {
           flex-direction: column;
         }
         .sc-shell.expanded {
-          right: 20px;
-          bottom: 20px;
+          right: 20px; bottom: 20px;
           width: min(1100px, calc(100vw - 40px));
           height: min(920px, calc(100dvh - 40px));
           border-radius: 30px;
         }
-
         .sc-header {
           background: ${HEADER_BG};
-          color: white;
+          color: #fff;
           padding: 16px 18px 14px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 16px;
         }
-        .sc-header-left {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          min-width: 0;
-        }
-        .sc-header-logo {
-          width: 28px;
-          height: 28px;
-          border-radius: 8px;
-          object-fit: cover;
-          flex: 0 0 auto;
-        }
+        .sc-header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+        .sc-header-logo { width: 28px; height: 28px; border-radius: 8px; }
         .sc-header-title {
-          font-size: 16px;
-          font-weight: 800;
-          line-height: 1.1;
-          letter-spacing: -0.01em;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
+          font-size: 16px; font-weight: 800; line-height: 1.1; letter-spacing: -0.01em;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .sc-header-actions {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex: 0 0 auto;
-        }
+        .sc-header-actions { display: flex; gap: 8px; }
         .sc-header-btn {
-          width: 42px;
-          height: 42px;
-          border-radius: 14px;
+          width: 42px; height: 42px; border-radius: 14px;
           border: 1px solid rgba(255,255,255,0.12);
           background: rgba(255,255,255,0.06);
-          color: #fff;
-          font-size: 24px;
-          line-height: 1;
-          cursor: pointer;
+          color: #fff; font-size: 24px; cursor: pointer;
         }
 
         .sc-body {
-          flex: 1;
-          overflow-y: auto;
-          padding: 16px 14px 18px;
-          background: ${SURFACE};
+          flex: 1; overflow-y: auto; padding: 16px 14px 18px; background: ${SURFACE};
         }
         .sc-date-divider {
-          width: fit-content;
-          margin: 0 auto 16px;
-          font-size: 12px;
-          color: ${MUTED};
+          width: fit-content; margin: 0 auto 16px;
+          font-size: 12px; color: ${MUTED};
           background: rgba(255,255,255,0.55);
-          padding: 10px 16px;
-          border-radius: 999px;
+          padding: 10px 16px; border-radius: 999px;
         }
-        .sc-row {
-          display: flex;
-          gap: 12px;
-          margin-bottom: 18px;
-          align-items: flex-start;
-        }
+        .sc-row { display: flex; gap: 12px; margin-bottom: 18px; align-items: flex-start; }
         .sc-row.user { justify-content: flex-end; }
         .sc-left-col { flex: 0 0 auto; padding-top: 6px; }
-
         .sc-avatar {
-          width: 34px;
-          height: 34px;
-          position: relative;
-          border-radius: 999px;
-          overflow: hidden;
-          background: #091731;
+          width: 34px; height: 34px; position: relative; border-radius: 999px; overflow: hidden; background: #091731;
         }
         .sc-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .sc-avatar-badge {
-          position: absolute;
-          right: -2px;
-          bottom: -2px;
-          width: 14px;
-          height: 14px;
-          border-radius: 999px;
-          background: #29d391;
-          color: #fff;
-          font-size: 7px;
-          font-weight: 700;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: 2px solid ${SURFACE};
+          position: absolute; right: -2px; bottom: -2px; width: 14px; height: 14px;
+          border-radius: 999px; background: #29d391; color: #fff; font-size: 7px;
+          font-weight: 700; display: flex; align-items: center; justify-content: center; border: 2px solid ${SURFACE};
         }
-
         .sc-bubble-wrap { max-width: min(78%, 740px); }
-        .sc-bubble-wrap.user {
-          display: flex;
-          flex-direction: column;
-          align-items: flex-end;
-          max-width: min(78%, 640px);
-        }
-        .sc-sender-name {
-          font-size: 12px;
-          color: ${MUTED};
-          margin: 2px 0 6px 8px;
-        }
+        .sc-bubble-wrap.user { display: flex; flex-direction: column; align-items: flex-end; max-width: min(78%, 640px); }
+        .sc-sender-name { font-size: 12px; color: ${MUTED}; margin: 2px 0 6px 8px; }
         .sc-bubble {
-          border-radius: 24px;
-          padding: 16px 18px;
-          font-size: 17px;
-          line-height: 1.55;
-          word-break: break-word;
+          border-radius: 24px; padding: 16px 18px; font-size: 17px; line-height: 1.55; word-break: break-word;
           box-shadow: 0 3px 12px rgba(0,0,0,0.03);
         }
         .sc-bubble.assistant { background: #fff; color: ${TEXT}; }
         .sc-bubble.user { background: ${BRAND_BLUE}; color: #fff; border-bottom-right-radius: 10px; }
-        .sc-time {
-          font-size: 12px;
-          color: ${MUTED};
-          margin-top: 8px;
-          padding: 0 8px;
-        }
+        .sc-time { font-size: 12px; color: ${MUTED}; margin-top: 8px; padding: 0 8px; }
         .sc-bubble-wrap.user .sc-time { text-align: right; }
 
-        .sc-msg-attachments {
-          margin-top: 10px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
+        .sc-msg-attachments { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
         .sc-msg-attachment {
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
-          background: rgba(255,255,255,0.86);
-          border: 1px solid ${BORDER};
-          border-radius: 14px;
-          padding: 8px 10px;
-          color: ${TEXT};
-          text-decoration: none;
-          width: fit-content;
-          max-width: 100%;
+          display: inline-flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.86);
+          border: 1px solid ${BORDER}; border-radius: 14px; padding: 8px 10px; color: ${TEXT};
+          text-decoration: none; width: fit-content; max-width: 100%;
         }
-        .sc-msg-attachment img {
-          width: 34px;
-          height: 34px;
-          border-radius: 8px;
-          object-fit: cover;
-        }
+        .sc-msg-attachment img { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; }
 
         .sc-products-block { margin-top: 12px; }
         .sc-products-label {
-          font-size: 12px;
-          display: inline-block;
-          margin-bottom: 10px;
-          padding: 4px 10px;
-          border-radius: 999px;
-          background: #d6f8de;
-          color: #128a47;
-          font-weight: 700;
+          font-size: 12px; display: inline-block; margin-bottom: 10px; padding: 4px 10px; border-radius: 999px;
+          background: #d6f8de; color: #128a47; font-weight: 700;
         }
         .sc-product-card {
-          background: #fff;
-          border: 1px solid rgba(0,0,0,0.06);
-          border-radius: 22px;
-          padding: 18px;
-          display: grid;
-          grid-template-columns: 90px 1fr;
-          gap: 16px;
-          margin-top: 12px;
+          background: #fff; border: 1px solid rgba(0,0,0,0.06); border-radius: 22px; padding: 16px;
+          display: grid; grid-template-columns: 72px 1fr; gap: 14px; margin-top: 12px;
         }
         .sc-product-thumb {
-          width: 90px;
-          height: 90px;
-          background: #f6f7f9;
-          border-radius: 16px;
-          overflow: hidden;
+          width: 72px; height: 72px; background: #f6f7f9; border-radius: 14px; overflow: hidden;
         }
-        .sc-product-thumb img {
-          width: 100%;
-          height: 100%;
-          object-fit: contain;
-        }
-        .sc-product-title {
-          font-size: 16px;
-          font-weight: 800;
-          line-height: 1.35;
-          color: #111827;
-        }
-        .sc-product-model {
-          margin-top: 8px;
-          color: ${MUTED};
-          font-size: 14px;
-        }
+        .sc-product-thumb img { width: 100%; height: 100%; object-fit: contain; }
+        .sc-product-title { font-size: 16px; font-weight: 800; line-height: 1.35; color: #111827; }
+        .sc-product-model { margin-top: 8px; color: ${MUTED}; font-size: 14px; }
         .sc-product-btn, .sc-more-products-btn {
-          appearance: none;
-          text-decoration: none;
-          border: none;
-          cursor: pointer;
+          appearance: none; text-decoration: none; border: none; cursor: pointer;
         }
         .sc-product-btn {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          margin-top: 12px;
-          padding: 12px 18px;
-          border-radius: 16px;
-          background: #2162f3;
-          color: #fff;
-          font-weight: 800;
+          display: inline-flex; align-items: center; justify-content: center; margin-top: 12px; padding: 11px 16px;
+          border-radius: 14px; background: #2162f3; color: #fff; font-weight: 800;
         }
         .sc-more-products-btn {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          margin-top: 12px;
-          padding: 12px 18px;
-          border-radius: 16px;
-          background: #081733;
-          color: #fff;
-          font-weight: 800;
+          display: inline-flex; align-items: center; justify-content: center; margin-top: 12px; padding: 11px 16px;
+          border-radius: 14px; background: #081733; color: #fff; font-weight: 800;
         }
 
         .sc-bottom-sheet {
           border-top: 1px solid rgba(0,0,0,0.06);
           background: rgba(255,255,255,0.96);
-          padding: 12px;
+          padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
           box-shadow: 0 -8px 30px rgba(0,0,0,0.08);
         }
-        .sc-sheet {
-          background: #fff;
-          border: 1px solid rgba(0,0,0,0.06);
-          border-radius: 20px;
-          padding: 16px;
+        .sc-sheet-card {
+          background: transparent;
         }
-        .sc-sheet-title {
-          font-size: 18px;
-          font-weight: 800;
-          color: #101827;
-          margin-bottom: 10px;
+        .sc-sheet-copy {
+          color: #475467; line-height: 1.55; font-size: 14px; margin-bottom: 10px;
         }
-        .sc-sheet-text {
-          color: #475467;
-          line-height: 1.55;
-          font-size: 14px;
-          margin-bottom: 12px;
+        .sc-sheet-input, .sc-sheet-textarea {
+          width: 100%; border: 1px solid ${BORDER}; border-radius: 18px; padding: 14px 16px;
+          font-size: 16px; color: ${TEXT}; background: #fff; box-sizing: border-box;
         }
-        .sc-sheet label {
-          display: block;
-          margin: 12px 0 6px;
-          font-size: 14px;
-          font-weight: 700;
-          color: #344054;
-        }
-        .sc-sheet input, .sc-sheet textarea {
-          width: 100%;
-          border: 1px solid ${BORDER};
-          border-radius: 16px;
-          padding: 14px 16px;
-          font-size: 16px;
-          color: ${TEXT};
-          background: #fff;
-          resize: vertical;
-          box-sizing: border-box;
-        }
-        .sc-file-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          padding: 12px 16px;
-          border-radius: 16px;
-          border: 1px solid ${BORDER};
-          background: #fff;
-          cursor: pointer;
-          font-weight: 700;
-          color: ${TEXT};
-          margin-top: 4px;
-        }
-        .sc-chip-list {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
+        .sc-sheet-textarea { margin-top: 10px; min-height: 110px; resize: vertical; }
+        .sc-sheet-actions {
           margin-top: 10px;
+          display: grid; grid-template-columns: 58px 1fr 58px; gap: 10px;
         }
+
+        .sc-chip-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
         .sc-chip-list.composer { padding: 0 2px 8px; }
         .sc-chip {
-          background: #fff;
-          border: 1px solid ${BORDER};
-          border-radius: 999px;
-          padding: 8px 12px;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 13px;
-          max-width: 100%;
+          background: #fff; border: 1px solid ${BORDER}; border-radius: 999px; padding: 8px 12px;
+          display: inline-flex; align-items: center; gap: 8px; font-size: 13px; max-width: 100%;
         }
-        .sc-chip button {
-          border: none;
-          background: transparent;
-          cursor: pointer;
-          color: #667085;
-          font-size: 16px;
-        }
+        .sc-chip button { border: none; background: transparent; cursor: pointer; color: #667085; font-size: 16px; }
 
-        .sc-sheet-actions {
-          margin-top: 14px;
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 10px;
-        }
-        .sc-action-btn {
-          height: 54px;
-          border-radius: 18px;
-          font-weight: 800;
-          cursor: pointer;
-          border: 1px solid ${BORDER};
-        }
-        .sc-action-btn.secondary {
-          background: #fff;
-          color: #344054;
-        }
-        .sc-action-btn.primary {
-          background: #081733;
-          color: #fff;
-          border-color: #081733;
-        }
-        .sc-rating-row {
-          display: flex;
-          gap: 10px;
-          margin-bottom: 10px;
-        }
+        .sc-rating-row { display: flex; gap: 10px; margin-bottom: 10px; }
         .sc-rating-btn {
-          width: 52px;
-          height: 52px;
-          border-radius: 16px;
-          border: 1px solid ${BORDER};
-          background: #fff;
-          font-size: 24px;
-          cursor: pointer;
+          width: 52px; height: 52px; border-radius: 16px; border: 1px solid ${BORDER}; background: #fff; font-size: 24px; cursor: pointer;
         }
-        .sc-rating-btn.active {
-          border-color: ${BRAND_BLUE};
-          box-shadow: inset 0 0 0 2px ${BRAND_BLUE};
-        }
-
-        .sc-ended-label {
-          color: ${MUTED};
-          text-align: center;
-          font-size: 13px;
-          margin-top: 10px;
-        }
+        .sc-rating-btn.active { border-color: ${BRAND_BLUE}; box-shadow: inset 0 0 0 2px ${BRAND_BLUE}; }
 
         .sc-footer {
           border-top: 1px solid rgba(0,0,0,0.06);
@@ -959,149 +647,47 @@ export default function SimpleChat() {
           padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
         }
         .sc-composer textarea {
-          width: 100%;
-          min-height: 72px;
-          max-height: 160px;
-          resize: none;
-          border-radius: 20px;
-          border: 1px solid ${BORDER};
-          padding: 14px 16px;
-          font-size: 16px;
-          color: ${TEXT};
-          background: #fff;
-          box-sizing: border-box;
+          width: 100%; min-height: 72px; max-height: 160px; resize: none;
+          border-radius: 20px; border: 1px solid ${BORDER}; padding: 14px 16px; font-size: 16px; color: ${TEXT}; background: #fff; box-sizing: border-box;
         }
         .sc-composer-actions {
-          margin-top: 10px;
-          display: grid;
-          grid-template-columns: 58px 1fr 58px;
-          gap: 10px;
+          margin-top: 10px; display: grid; grid-template-columns: 58px 1fr 58px; gap: 10px;
         }
         .sc-attach-btn, .sc-end-btn, .sc-send-btn {
-          height: 54px;
-          border-radius: 18px;
-          border: 1px solid ${BORDER};
-          background: #fff;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: 800;
-          color: ${TEXT};
-          cursor: pointer;
+          height: 54px; border-radius: 18px; border: 1px solid ${BORDER}; background: #fff;
+          display: inline-flex; align-items: center; justify-content: center; font-weight: 800; color: ${TEXT}; cursor: pointer;
         }
         .sc-attach-btn { font-size: 26px; }
-        .sc-send-btn {
-          background: ${BRAND_BLUE};
-          color: #fff;
-          border-color: transparent;
-          font-size: 28px;
-        }
+        .sc-send-btn { background: ${BRAND_BLUE}; color: #fff; border-color: transparent; font-size: 28px; }
+
+        .sc-ended-label { color: ${MUTED}; text-align: center; font-size: 13px; margin-top: 10px; }
 
         @media (max-width: 768px) {
-          .sc-launcher {
-            right: 14px;
-            bottom: 14px;
-            width: 56px;
-            height: 56px;
-          }
-          .sc-launcher img {
-            width: 24px;
-            height: 24px;
-          }
+          .sc-launcher { right: 14px; bottom: 14px; width: 56px; height: 56px; }
+          .sc-launcher img { width: 22px; height: 22px; }
           .sc-shell, .sc-shell.expanded {
-            inset: 0;
-            width: 100vw;
-            height: 100dvh;
-            max-width: 100vw;
-            max-height: 100dvh;
-            right: 0;
-            bottom: 0;
-            border-radius: 0;
-            border: none;
+            inset: 0; width: 100vw; height: 100dvh; max-width: 100vw; max-height: 100dvh;
+            right: 0; bottom: 0; border-radius: 0; border: none;
           }
-          .sc-header {
-            padding: 12px;
-          }
-          .sc-header-logo {
-            width: 18px;
-            height: 18px;
-          }
-          .sc-header-title {
-            font-size: 15px;
-          }
-          .sc-header-btn {
-            width: 38px;
-            height: 38px;
-            border-radius: 12px;
-          }
-          .sc-body {
-            padding: 12px 10px 14px;
-          }
-          .sc-avatar {
-            width: 28px;
-            height: 28px;
-          }
-          .sc-avatar-badge {
-            width: 14px;
-            height: 14px;
-            font-size: 7px;
-          }
-          .sc-bubble-wrap {
-            max-width: 82%;
-          }
-          .sc-bubble {
-            font-size: 15px;
-            padding: 14px 16px;
-            border-radius: 20px;
-          }
-          .sc-product-card {
-            grid-template-columns: 66px 1fr;
-            gap: 12px;
-            padding: 14px;
-            border-radius: 18px;
-          }
-          .sc-product-thumb {
-            width: 66px;
-            height: 66px;
-            border-radius: 12px;
-          }
+          .sc-header { padding: 12px; }
+          .sc-header-logo { width: 18px; height: 18px; }
+          .sc-header-title { font-size: 15px; }
+          .sc-header-btn { width: 38px; height: 38px; border-radius: 12px; }
+          .sc-body { padding: 12px 10px 14px; }
+          .sc-avatar { width: 28px; height: 28px; }
+          .sc-avatar-badge { width: 14px; height: 14px; font-size: 7px; }
+          .sc-bubble-wrap { max-width: 82%; }
+          .sc-bubble { font-size: 15px; padding: 14px 16px; border-radius: 20px; }
+          .sc-product-card { grid-template-columns: 66px 1fr; gap: 12px; padding: 14px; border-radius: 18px; }
+          .sc-product-thumb { width: 66px; height: 66px; border-radius: 12px; }
           .sc-product-title { font-size: 15px; }
           .sc-product-model { font-size: 13px; }
-          .sc-bottom-sheet {
-            padding: 10px;
-          }
-          .sc-sheet {
-            border-radius: 18px;
-            padding: 14px;
-          }
-          .sc-sheet-title {
-            font-size: 16px;
-          }
-          .sc-sheet-text {
-            font-size: 13px;
-          }
-          .sc-sheet label {
-            font-size: 13px;
-          }
-          .sc-sheet input, .sc-sheet textarea {
-            padding: 12px 14px;
-            border-radius: 14px;
-          }
-          .sc-footer {
-            padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
-          }
-          .sc-composer textarea {
-            min-height: 84px;
-            border-radius: 18px;
-          }
-          .sc-composer-actions {
-            grid-template-columns: 56px 1fr 56px;
-            gap: 8px;
-          }
-          .sc-attach-btn, .sc-end-btn, .sc-send-btn, .sc-action-btn {
-            height: 56px;
-            border-radius: 16px;
-          }
+          .sc-bottom-sheet, .sc-footer { padding: 10px calc(10px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); }
+          .sc-sheet-copy { font-size: 13px; }
+          .sc-sheet-input, .sc-sheet-textarea { border-radius: 16px; padding: 12px 14px; }
+          .sc-composer textarea { min-height: 84px; border-radius: 18px; }
+          .sc-sheet-actions, .sc-composer-actions { grid-template-columns: 56px 1fr 56px; gap: 8px; }
+          .sc-attach-btn, .sc-end-btn, .sc-send-btn { height: 56px; border-radius: 16px; }
         }
       `}</style>
     </>
