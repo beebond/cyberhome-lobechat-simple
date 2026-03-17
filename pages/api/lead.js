@@ -1,4 +1,5 @@
 // pages/api/lead.js
+// CyberHome SimpleChat V9 lead endpoint
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -20,6 +21,29 @@ function getClientIP(req) {
   return req.socket?.remoteAddress || "unknown";
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;");
+}
+
+function sanitizeAttachments(attachments = []) {
+  if (!Array.isArray(attachments)) return [];
+
+  return attachments
+    .slice(0, 10)
+    .map((item) => ({
+      id: sanitizeText(item?.id, 200),
+      name: sanitizeText(item?.name, 300),
+      url: sanitizeText(item?.url, 2000),
+      mimeType: sanitizeText(item?.mimeType, 200),
+      size: Number(item?.size || 0),
+    }))
+    .filter((item) => item.name || item.url);
+}
+
 function formatTranscript(transcript = []) {
   if (!Array.isArray(transcript) || transcript.length === 0) {
     return "No transcript available.";
@@ -28,11 +52,17 @@ function formatTranscript(transcript = []) {
   return transcript
     .map((item, index) => {
       const role = item?.role || "unknown";
-      const content = sanitizeText(item?.content || "", 4000);
+      const content = sanitizeText(item?.content || item?.text || "", 4000);
       const createdAt = item?.createdAt || "";
       const products = Array.isArray(item?.products)
         ? item.products
             .map((p) => p?.title || p?.model || p?.handle || "")
+            .filter(Boolean)
+            .join(", ")
+        : "";
+      const attachments = Array.isArray(item?.attachments)
+        ? item.attachments
+            .map((a) => a?.name || a?.url || "")
             .filter(Boolean)
             .join(", ")
         : "";
@@ -43,6 +73,7 @@ function formatTranscript(transcript = []) {
         createdAt ? `Time: ${createdAt}` : "",
         content ? `Content: ${content}` : "",
         products ? `Products: ${products}` : "",
+        attachments ? `Attachments: ${attachments}` : "",
       ]
         .filter(Boolean)
         .join("\n");
@@ -69,14 +100,7 @@ function extractTokenUsage(transcript = []) {
   };
 }
 
-async function sendViaResend({
-  to,
-  from,
-  subject,
-  html,
-  text,
-  apiKey,
-}) {
+async function sendViaResend({ to, from, subject, html, text, apiKey, attachments = [] }) {
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
@@ -89,18 +113,23 @@ async function sendViaResend({
       subject,
       html,
       text,
+      attachments,
     }),
   });
 
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(
-      `Resend API error: ${response.status} ${JSON.stringify(data)}`
-    );
+    throw new Error(`Resend API error: ${response.status} ${JSON.stringify(data)}`);
   }
 
   return data;
+}
+
+function convertAttachmentsForResend(attachments = []) {
+  // Resend attachments can be provided as links or base64 content.
+  // Here we forward links in the email body and only include direct content if caller already supplied it.
+  return [];
 }
 
 export default async function handler(req, res) {
@@ -113,93 +142,120 @@ export default async function handler(req, res) {
 
     const {
       sessionId = "",
-      name = "",
       email = "",
       note = "",
       transcript = [],
-      source = "simple_chat_v5",
+      attachments = [],
+      source = "simple_chat_v9",
+      fallbackReason = "",
+      pageUrl = "",
       submittedAt = new Date().toISOString(),
     } = req.body || {};
 
     const safeSessionId = sanitizeText(sessionId, 200);
-    const safeName = sanitizeText(name, 200);
     const safeEmail = normalizeEmail(email);
     const safeNote = sanitizeText(note, 3000);
     const safeSource = sanitizeText(source, 200);
+    const safeFallbackReason = sanitizeText(fallbackReason, 200);
+    const safePageUrl = sanitizeText(pageUrl, 2000);
     const safeSubmittedAt = sanitizeText(submittedAt, 100);
 
     if (!safeEmail || !isValidEmail(safeEmail)) {
-      return res.status(400).json({
-        ok: false,
-        error: "Invalid email address",
-      });
+      return res.status(400).json({ ok: false, error: "Invalid email address" });
     }
 
-    const safeTranscript = Array.isArray(transcript) ? transcript.slice(-50) : [];
+    const safeTranscript = Array.isArray(transcript) ? transcript.slice(-80) : [];
     const transcriptText = formatTranscript(safeTranscript);
     const tokenUsage = extractTokenUsage(safeTranscript);
+    const safeAttachments = sanitizeAttachments(attachments);
 
     const payload = {
       sessionId: safeSessionId,
-      name: safeName,
       email: safeEmail,
       note: safeNote,
       source: safeSource,
+      fallbackReason: safeFallbackReason,
+      pageUrl: safePageUrl,
       submittedAt: safeSubmittedAt,
       clientIP,
       tokenUsage,
       transcriptCount: safeTranscript.length,
+      attachmentCount: safeAttachments.length,
+      attachments: safeAttachments,
       transcript: safeTranscript,
     };
 
-    console.log("=== CyberHome Lead Captured ===");
+    console.log("=== CyberHome Lead Captured V9 ===");
     console.log(JSON.stringify(payload, null, 2));
 
     const resendApiKey = process.env.RESEND_API_KEY || "";
-    const leadToEmail =
-      process.env.LEAD_TO_EMAIL || process.env.CONTACT_TO_EMAIL || "";
-    const resendFrom =
-      process.env.RESEND_FROM_EMAIL || "CyberHome AI <onboarding@resend.dev>";
+    const leadToEmail = process.env.LEAD_TO_EMAIL || process.env.CONTACT_TO_EMAIL || "";
+    const resendFrom = process.env.RESEND_FROM_EMAIL || "CyberHome AI <onboarding@resend.dev>";
 
     let emailSent = false;
     let resendResult = null;
 
     if (resendApiKey && leadToEmail) {
-      const subject = `New Shopify AI Lead - ${safeEmail}`;
+      const subject = `New CyberHome AI Lead - ${safeEmail}`;
+
+      const attachmentListHtml = safeAttachments.length
+        ? `<ul>${safeAttachments
+            .map(
+              (a) =>
+                `<li><strong>${escapeHtml(a.name || "Attachment")}</strong>${
+                  a.mimeType ? ` (${escapeHtml(a.mimeType)})` : ""
+                }${a.url ? ` - <a href="${escapeHtml(a.url)}">Open file</a>` : ""}</li>`
+            )
+            .join("")}</ul>`
+        : "<p>(No attachments)</p>";
+
+      const attachmentListText = safeAttachments.length
+        ? safeAttachments
+            .map((a) => `- ${a.name || "Attachment"}${a.mimeType ? ` (${a.mimeType})` : ""}${a.url ? ` - ${a.url}` : ""}`)
+            .join("\n")
+        : "(No attachments)";
 
       const html = `
-        <h2>New Shopify AI Lead</h2>
-        <p><strong>Name:</strong> ${escapeHtml(safeName || "(empty)")}</p>
+        <h2>New CyberHome AI Lead</h2>
         <p><strong>Email:</strong> ${escapeHtml(safeEmail)}</p>
         <p><strong>Session ID:</strong> ${escapeHtml(safeSessionId || "(empty)")}</p>
         <p><strong>Source:</strong> ${escapeHtml(safeSource)}</p>
+        <p><strong>Fallback Reason:</strong> ${escapeHtml(safeFallbackReason || "(empty)")}</p>
+        <p><strong>Page URL:</strong> ${escapeHtml(safePageUrl || "(empty)")}</p>
         <p><strong>Submitted At:</strong> ${escapeHtml(safeSubmittedAt)}</p>
         <p><strong>Client IP:</strong> ${escapeHtml(clientIP)}</p>
         <p><strong>Input Tokens:</strong> ${tokenUsage.inputTokens}</p>
         <p><strong>Output Tokens:</strong> ${tokenUsage.outputTokens}</p>
         <p><strong>Total Tokens:</strong> ${tokenUsage.totalTokens}</p>
         <hr />
-        <p><strong>Note:</strong></p>
+        <p><strong>User Message:</strong></p>
         <pre>${escapeHtml(safeNote || "(empty)")}</pre>
+        <hr />
+        <p><strong>Attachments:</strong></p>
+        ${attachmentListHtml}
         <hr />
         <p><strong>Transcript:</strong></p>
         <pre>${escapeHtml(transcriptText)}</pre>
       `;
 
       const text = [
-        "New Shopify AI Lead",
-        `Name: ${safeName || "(empty)"}`,
+        "New CyberHome AI Lead",
         `Email: ${safeEmail}`,
         `Session ID: ${safeSessionId || "(empty)"}`,
         `Source: ${safeSource}`,
+        `Fallback Reason: ${safeFallbackReason || "(empty)"}`,
+        `Page URL: ${safePageUrl || "(empty)"}`,
         `Submitted At: ${safeSubmittedAt}`,
         `Client IP: ${clientIP}`,
         `Input Tokens: ${tokenUsage.inputTokens}`,
         `Output Tokens: ${tokenUsage.outputTokens}`,
         `Total Tokens: ${tokenUsage.totalTokens}`,
         "",
-        "Note:",
+        "User Message:",
         safeNote || "(empty)",
+        "",
+        "Attachments:",
+        attachmentListText,
         "",
         "Transcript:",
         transcriptText,
@@ -211,6 +267,7 @@ export default async function handler(req, res) {
         subject,
         html,
         text,
+        attachments: convertAttachmentsForResend(safeAttachments),
         apiKey: resendApiKey,
       });
 
@@ -226,18 +283,6 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error("Lead API error:", error);
-
-    return res.status(500).json({
-      ok: false,
-      error: "Lead submission failed",
-    });
+    return res.status(500).json({ ok: false, error: "Lead submission failed" });
   }
-}
-
-function escapeHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
