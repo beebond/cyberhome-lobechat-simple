@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
+const BRAND_BLUE = "#19a8e8";
+const HEADER_BG = "#07090e";
+const SURFACE = "#f3f3f5";
+const TEXT = "#1f2937";
+const MUTED = "#8a94a6";
+const BORDER = "#d9dde5";
+
 const SIMPLECHAT_VERSION = "";
 const STORAGE_PREFIX = "cyberhome_simplechat_v9_1_3";
 const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
