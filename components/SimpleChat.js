@@ -78,7 +78,7 @@ function LogoBadge({ size = 24, rounded = 8 }) {
         width: size,
         height: size,
         borderRadius: rounded,
-        objectFit: "cover",
+        objectFit: "contain",
         display: "block",
         flexShrink: 0,
         background: "#0b0f17",
