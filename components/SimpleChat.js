@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V9.2.4-DS7";
+const SIMPLECHAT_VERSION = "V9.2.4-DS8";
 const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 const LOGO_URL = "https://cdn.shopify.com/s/files/1/0460/6066/7032/files/LOGO.png?v=1767935662";
 const BRAND_BLUE = "#19a8e8";
@@ -459,6 +459,7 @@ export default function SimpleChat() {
   const bottomRef = useRef(null);
   const idleTimerRef = useRef(null);
   const hasTriggeredIdleRef = useRef(false);
+  const retryTimerRef = useRef(null); // 新增：用于延迟重试计算键盘高度
 
   // 检测是否在 iframe 中
   useEffect(() => {
@@ -795,7 +796,6 @@ export default function SimpleChat() {
     const newExpanded = !isExpanded;
     setIsExpanded(newExpanded);
     if (isIframe) {
-      // 向父页面发送展开/收缩消息
       window.parent.postMessage(
         { source: "cyberhome-simplechat", type: "chat:expand", expanded: newExpanded },
         "*"
@@ -803,17 +803,40 @@ export default function SimpleChat() {
     }
   };
 
-  // 输入框焦点处理
+  // 输入框焦点处理 - 改进版
   const handleFocus = () => {
     setFocused(true);
     const viewportHeight = window.visualViewport?.height || window.innerHeight;
     setFocusViewportHeight(viewportHeight);
+    // 延迟多次计算键盘高度，适应不同浏览器键盘弹出动画
+    const tryUpdateOffset = (delay) => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = setTimeout(() => {
+        if (!focused) return; // 已失焦则忽略
+        const currentHeight = window.visualViewport?.height || window.innerHeight;
+        const diff = viewportHeight - currentHeight;
+        if (diff > 0) {
+          setKeyboardOffset((prev) => Math.max(prev, diff)); // 取最大值，避免窗口弹得不够高
+        }
+        // 如果还没有完全展开，继续尝试
+        if (diff < 50 && diff > 0) {
+          tryUpdateOffset(100);
+        }
+      }, delay);
+    };
+    tryUpdateOffset(100);  // 100ms后尝试
+    tryUpdateOffset(200);  // 200ms后尝试
+    tryUpdateOffset(300);  // 300ms后尝试
   };
 
   const handleBlur = () => {
     setFocused(false);
     setKeyboardOffset(0);
     setFocusViewportHeight(null);
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
   };
 
   // 监听窗口 resize 和 visualViewport resize
@@ -846,7 +869,9 @@ export default function SimpleChat() {
   const hasOverlayPanel = messages.some((m) => m.type === "lead_form" || m.type === "rating_panel");
 
   const baseBottom = "max(18px, env(safe-area-inset-bottom))";
-  const bottomValue = keyboardOffset > 0 ? `calc(${keyboardOffset}px + 18px)` : baseBottom;
+  // 限制最大偏移量，避免窗口超出屏幕顶部（键盘高度通常不超过视口一半）
+  const maxOffset = Math.min(keyboardOffset, window.innerHeight * 0.5);
+  const bottomValue = maxOffset > 0 ? `calc(${maxOffset}px + 18px)` : baseBottom;
 
   return (
     <>
