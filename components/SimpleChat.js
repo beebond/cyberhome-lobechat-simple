@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V9.2.4-DS6";
+const SIMPLECHAT_VERSION = "V9.2.4-DS7";
 const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 const LOGO_URL = "https://cdn.shopify.com/s/files/1/0460/6066/7032/files/LOGO.png?v=1767935662";
 const BRAND_BLUE = "#19a8e8";
@@ -181,16 +181,16 @@ function ProductCard({ product }) {
       style={{
         border: "1px solid #e5e7eb",
         borderRadius: 16,
-        padding: 12,                // 略微缩小内边距
+        padding: 12,
         marginTop: 12,
         display: "flex",
-        gap: 12,                    // 缩小间距
+        gap: 12,
         background: "#fff",
       }}
     >
       <div
         style={{
-          width: 80,                 // 图片稍小
+          width: 80,
           height: 80,
           borderRadius: 12,
           overflow: "hidden",
@@ -207,9 +207,9 @@ function ProductCard({ product }) {
         ) : null}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.35, marginBottom: 4 }}>{title}</div>  {/* 18px → 14px */}
-        {model ? <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>Model: {model}</div> : null}  {/* 14px → 12px */}
-        {price !== "" ? <div style={{ fontSize: 13, color: "#d97706", fontWeight: 700, marginBottom: 8 }}>{price}</div> : null}  {/* 16px → 13px */}
+        <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.35, marginBottom: 4 }}>{title}</div>
+        {model ? <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>Model: {model}</div> : null}
+        {price !== "" ? <div style={{ fontSize: 13, color: "#d97706", fontWeight: 700, marginBottom: 8 }}>{price}</div> : null}
         <a
           href={url}
           target="_blank"
@@ -217,11 +217,11 @@ function ProductCard({ product }) {
           style={{
             background: "#2563eb",
             color: "#fff",
-            padding: "6px 12px",      // 按钮内边距相应缩小
+            padding: "6px 12px",
             borderRadius: 12,
             textDecoration: "none",
             fontWeight: 700,
-            fontSize: 12,              // 14px → 12px
+            fontSize: 12,
             display: "inline-block",
             fontFamily: "Arial, Helvetica, sans-serif",
           }}
@@ -443,7 +443,7 @@ export default function SimpleChat() {
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const [focused, setFocused] = useState(false);
   const [focusViewportHeight, setFocusViewportHeight] = useState(null);
-  const [isIframe, setIsIframe] = useState(false); // 检测是否在 iframe 中
+  const [isIframe, setIsIframe] = useState(false);
 
   const [leadSubmitting, setLeadSubmitting] = useState(false);
   const [leadSubmitted, setLeadSubmitted] = useState(false);
@@ -792,17 +792,14 @@ export default function SimpleChat() {
 
   // 处理最大化按钮点击
   const handleExpandClick = () => {
+    const newExpanded = !isExpanded;
+    setIsExpanded(newExpanded);
     if (isIframe) {
-      // 在 iframe 中，向父页面发送请求，由父页面调整 iframe 大小
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage(
-          { source: "cyberhome-simplechat", type: "chat:expand", expanded: !isExpanded },
-          "*" // 生产环境可替换为父页面域名
-        );
-      }
-    } else {
-      // 不在 iframe 中，执行本地展开/收缩
-      setIsExpanded((v) => !v);
+      // 向父页面发送展开/收缩消息
+      window.parent.postMessage(
+        { source: "cyberhome-simplechat", type: "chat:expand", expanded: newExpanded },
+        "*"
+      );
     }
   };
 
