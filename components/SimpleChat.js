@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V9.2.4-DS8";
+const SIMPLECHAT_VERSION = "V9.3-DS8";
 const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 const LOGO_URL = "https://cdn.shopify.com/s/files/1/0460/6066/7032/files/LOGO.png?v=1767935662";
 const BRAND_BLUE = "#19a8e8";
@@ -41,6 +41,19 @@ function isValidEmail(email) {
 
 function sanitizeLeadText(value, max = 3000) {
   return String(value || "").replace(/\0/g, "").trim().slice(0, max);
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const base64 = result.includes(",") ? result.split(",")[1] : result;
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 function resolveDetailLink(meta) {
@@ -238,6 +251,11 @@ function InlineLeadForm({
   submitted,
   error,
   form,
+  uploadedFiles,
+  uploading,
+  uploadError,
+  onAttachmentChange,
+  onRemoveAttachment,
   onChange,
   onSubmit,
   onCancel,
@@ -290,6 +308,53 @@ function InlineLeadForm({
         </div>
       ) : null}
 
+      {uploadError ? (
+        <div style={{ marginTop: 14, color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: "10px 12px", fontSize: 14 }}>
+          {uploadError}
+        </div>
+      ) : null}
+
+      {Array.isArray(uploadedFiles) && uploadedFiles.length > 0 ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+          {uploadedFiles.map((file) => (
+            <div
+              key={file.id || file.url || file.name}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 10px",
+                border: "1px solid #d1d5db",
+                borderRadius: 999,
+                background: "#fff",
+                fontSize: 13,
+                color: "#374151",
+                maxWidth: "100%",
+              }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>
+                {file.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemoveAttachment?.(file)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  color: "#9ca3af",
+                  fontSize: 14,
+                  lineHeight: 1,
+                  padding: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div style={{ display: "grid", gridTemplateColumns: "58px 1fr 58px", gap: 10, marginTop: 16 }}>
         <label
           style={{
@@ -301,11 +366,18 @@ function InlineLeadForm({
             alignItems: "center",
             justifyContent: "center",
             fontSize: 22,
-            cursor: "pointer",
+            cursor: uploading ? "not-allowed" : "pointer",
+            opacity: uploading ? 0.7 : 1,
           }}
         >
-          📎
-          <input type="file" hidden />
+          {uploading ? "…" : "📎"}
+          <input
+            type="file"
+            hidden
+            onChange={onAttachmentChange}
+            disabled={uploading}
+            accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.doc,.docx"
+          />
         </label>
 
         {onCancel ? (
@@ -449,6 +521,9 @@ export default function SimpleChat() {
   const [leadSubmitted, setLeadSubmitted] = useState(false);
   const [leadError, setLeadError] = useState("");
   const [leadForm, setLeadForm] = useState({ name: "", email: "", note: "" });
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   const [showRatingPanel, setShowRatingPanel] = useState(false);
   const [ratingValue, setRatingValue] = useState(0);
@@ -588,6 +663,55 @@ export default function SimpleChat() {
     setLeadForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function removeUploadedAttachment(file) {
+    setUploadedFiles((prev) =>
+      prev.filter((item) => (item.id || item.url || item.name) !== (file.id || file.url || file.name))
+    );
+  }
+
+  async function handleAttachmentChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadError("");
+    setUploading(true);
+
+    try {
+      const base64 = await fileToBase64(file);
+
+      const resp = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: file.name,
+          mimeType: file.type || "application/octet-stream",
+          base64,
+          source: `simplechat_${SIMPLECHAT_VERSION.toLowerCase().replace(/\./g, "_")}_lead_attachment`,
+        }),
+      });
+
+      const data = await resp.json();
+      if (!resp.ok || !data?.ok) throw new Error(data?.error || "Upload failed");
+
+      setUploadedFiles((prev) => [
+        ...prev,
+        {
+          id: data.id,
+          name: data.name,
+          url: data.url,
+          mimeType: data.mimeType,
+          size: data.size,
+        },
+      ]);
+    } catch (error) {
+      console.error("Attachment upload error:", error);
+      setUploadError("Sorry, file upload failed. Please try again.");
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  }
+
   async function submitLeadForm(reason = "manual") {
     const safeName = sanitizeLeadText(leadForm.name, 200);
     const safeEmail = normalizeEmail(leadForm.email);
@@ -611,7 +735,9 @@ export default function SimpleChat() {
           email: safeEmail,
           note: safeNote,
           transcript: transcriptForLead,
+          attachments: uploadedFiles,
           source: `simplechat_${SIMPLECHAT_VERSION.toLowerCase().replace(/\./g, "_")}_${reason}`,
+          pageUrl: typeof window !== "undefined" ? window.location.href : "",
           submittedAt: new Date().toISOString(),
         }),
       });
@@ -622,6 +748,8 @@ export default function SimpleChat() {
       setLeadSubmitted(true);
       setIdlePromptEnabled(false);
       removeExistingLeadForms();
+      setUploadedFiles([]);
+      setUploadError("");
 
       setMessages((prev) => [
         ...prev,
@@ -973,6 +1101,11 @@ export default function SimpleChat() {
                           submitted={leadSubmitted}
                           error={leadError}
                           form={leadForm}
+                          uploadedFiles={uploadedFiles}
+                          uploading={uploading}
+                          uploadError={uploadError}
+                          onAttachmentChange={handleAttachmentChange}
+                          onRemoveAttachment={removeUploadedAttachment}
                           onChange={handleLeadFormChange}
                           onSubmit={() => submitLeadForm(msg.meta?.reason || "manual")}
                           onCancel={dismissLeadForm}
