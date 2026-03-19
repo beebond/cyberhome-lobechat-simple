@@ -9,7 +9,15 @@ const nextConfig = {
   },
   images: {
     unoptimized: true,
-  }
+  },
+  async rewrites() {
+    return [
+      {
+        source: "/uploads/:path*",
+        destination: "/api/file/:path*",
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;

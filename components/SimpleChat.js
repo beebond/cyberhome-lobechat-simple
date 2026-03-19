@@ -1215,7 +1215,7 @@ export default function SimpleChat() {
                   }}
                 >
                   📎
-                  <input type="file" hidden onChange={() => {}} />
+                  <input type="file" hidden onChange={handleAttachmentChange} disabled={uploading} accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.doc,.docx" onChange={() => {}} />
                 </label>
 
                 <button
