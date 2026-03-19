@@ -1,6 +1,5 @@
 // pages/api/upload.js
 // CyberHome SimpleChat V9 upload endpoint (lightweight filesystem version)
-// Suitable for early testing. For production, replace local disk with S3 / Supabase / Cloudinary.
 
 import fs from "fs";
 import path from "path";
@@ -84,9 +83,15 @@ export default async function handler(req, res) {
     const filePath = path.join(uploadsDir, fileName);
     fs.writeFileSync(filePath, buffer);
 
-    const publicUrl = `/uploads/chat/${fileName}`;
+    // ✅ 核心修复：生成绝对URL（用于邮件）
+    const baseUrl =
+      process.env.PUBLIC_BASE_URL ||
+      process.env.RAILWAY_STATIC_URL ||
+      "https://cyberhome-ai-simplechat-production.up.railway.app";
 
-    console.log("=== CyberHome Upload Captured V9 ===");
+    const publicUrl = `${baseUrl}/api/file/uploads/chat/${fileName}`;
+
+    console.log("=== CyberHome Upload Captured V9.3 FIX ===");
     console.log(
       JSON.stringify(
         {
@@ -106,7 +111,7 @@ export default async function handler(req, res) {
       ok: true,
       id: fileName,
       name: safeName,
-      url: publicUrl,
+      url: publicUrl, // ✅ 返回绝对URL
       mimeType: safeMimeType,
       size: buffer.length,
     });
