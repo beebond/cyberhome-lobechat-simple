@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V9.2.4-DS5";
+const SIMPLECHAT_VERSION = "V9.2.4-DS6";
 const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 const LOGO_URL = "https://cdn.shopify.com/s/files/1/0460/6066/7032/files/LOGO.png?v=1767935662";
 const BRAND_BLUE = "#19a8e8";
@@ -167,6 +167,7 @@ function MoreLinkButton({ href, label }) {
   );
 }
 
+// 产品卡片 - 字体缩小一半优化
 function ProductCard({ product }) {
   if (!product) return null;
   const title = product.title || "Product";
@@ -180,17 +181,17 @@ function ProductCard({ product }) {
       style={{
         border: "1px solid #e5e7eb",
         borderRadius: 16,
-        padding: 16,
+        padding: 12,                // 略微缩小内边距
         marginTop: 12,
         display: "flex",
-        gap: 16,
+        gap: 12,                    // 缩小间距
         background: "#fff",
       }}
     >
       <div
         style={{
-          width: 96,
-          height: 96,
+          width: 80,                 // 图片稍小
+          height: 80,
           borderRadius: 12,
           overflow: "hidden",
           background: "#f3f4f6",
@@ -206,9 +207,9 @@ function ProductCard({ product }) {
         ) : null}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 18, lineHeight: 1.35, marginBottom: 6 }}>{title}</div>
-        {model ? <div style={{ fontSize: 14, color: MUTED, marginBottom: 8 }}>Model: {model}</div> : null}
-        {price !== "" ? <div style={{ fontSize: 16, color: "#d97706", fontWeight: 700, marginBottom: 12 }}>{price}</div> : null}
+        <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.35, marginBottom: 4 }}>{title}</div>  {/* 18px → 14px */}
+        {model ? <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>Model: {model}</div> : null}  {/* 14px → 12px */}
+        {price !== "" ? <div style={{ fontSize: 13, color: "#d97706", fontWeight: 700, marginBottom: 8 }}>{price}</div> : null}  {/* 16px → 13px */}
         <a
           href={url}
           target="_blank"
@@ -216,10 +217,11 @@ function ProductCard({ product }) {
           style={{
             background: "#2563eb",
             color: "#fff",
-            padding: "10px 16px",
+            padding: "6px 12px",      // 按钮内边距相应缩小
             borderRadius: 12,
             textDecoration: "none",
             fontWeight: 700,
+            fontSize: 12,              // 14px → 12px
             display: "inline-block",
             fontFamily: "Arial, Helvetica, sans-serif",
           }}
@@ -440,7 +442,8 @@ export default function SimpleChat() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [keyboardOffset, setKeyboardOffset] = useState(0);
   const [focused, setFocused] = useState(false);
-  const [focusViewportHeight, setFocusViewportHeight] = useState(null); // 聚焦时的视口高度
+  const [focusViewportHeight, setFocusViewportHeight] = useState(null);
+  const [isIframe, setIsIframe] = useState(false); // 检测是否在 iframe 中
 
   const [leadSubmitting, setLeadSubmitting] = useState(false);
   const [leadSubmitted, setLeadSubmitted] = useState(false);
@@ -456,6 +459,11 @@ export default function SimpleChat() {
   const bottomRef = useRef(null);
   const idleTimerRef = useRef(null);
   const hasTriggeredIdleRef = useRef(false);
+
+  // 检测是否在 iframe 中
+  useEffect(() => {
+    setIsIframe(window.self !== window.top);
+  }, []);
 
   // 监听父页面发来的 open 消息（当用户点击悬浮按钮时）
   useEffect(() => {
@@ -782,10 +790,25 @@ export default function SimpleChat() {
     injectRatingPanel("end_chat");
   }
 
+  // 处理最大化按钮点击
+  const handleExpandClick = () => {
+    if (isIframe) {
+      // 在 iframe 中，向父页面发送请求，由父页面调整 iframe 大小
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage(
+          { source: "cyberhome-simplechat", type: "chat:expand", expanded: !isExpanded },
+          "*" // 生产环境可替换为父页面域名
+        );
+      }
+    } else {
+      // 不在 iframe 中，执行本地展开/收缩
+      setIsExpanded((v) => !v);
+    }
+  };
+
   // 输入框焦点处理
   const handleFocus = () => {
     setFocused(true);
-    // 记录当前视口高度（优先使用 visualViewport，更准确）
     const viewportHeight = window.visualViewport?.height || window.innerHeight;
     setFocusViewportHeight(viewportHeight);
   };
@@ -825,7 +848,6 @@ export default function SimpleChat() {
 
   const hasOverlayPanel = messages.some((m) => m.type === "lead_form" || m.type === "rating_panel");
 
-  // 初始底部间距考虑安全区域
   const baseBottom = "max(18px, env(safe-area-inset-bottom))";
   const bottomValue = keyboardOffset > 0 ? `calc(${keyboardOffset}px + 18px)` : baseBottom;
 
@@ -891,7 +913,7 @@ export default function SimpleChat() {
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => setIsExpanded((v) => !v)}
+                onClick={handleExpandClick}
                 style={{ width: 42, height: 42, borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "#fff", fontSize: 22, cursor: "pointer", fontFamily: "Arial, Helvetica, sans-serif" }}
               >
                 {isExpanded ? "❐" : "▢"}
