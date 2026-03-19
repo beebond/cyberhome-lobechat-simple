@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V9.3-DS8";
+const SIMPLECHAT_VERSION = "V9.3.2-DS8";
 const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
+const MINIMIZE_ARCHIVE_DELAY_MS = 10 * 60 * 1000;
+const ARCHIVE_PLACEHOLDER_EMAIL = "conversation-archive@cyberhome.app";
 const LOGO_URL = "https://cdn.shopify.com/s/files/1/0460/6066/7032/files/LOGO.png?v=1767935662";
 const BRAND_BLUE = "#19a8e8";
 const HEADER_BG = "#171717";
@@ -535,6 +537,9 @@ export default function SimpleChat() {
   const idleTimerRef = useRef(null);
   const hasTriggeredIdleRef = useRef(false);
   const retryTimerRef = useRef(null); // 新增：用于延迟重试计算键盘高度
+  const minimizeArchiveTimerRef = useRef(null);
+  const archiveSentRef = useRef(false);
+  const archiveInFlightRef = useRef(false);
 
   // 检测是否在 iframe 中
   useEffect(() => {
@@ -546,6 +551,7 @@ export default function SimpleChat() {
     const handleMessage = (event) => {
       const data = event.data || {};
       if (data.source === 'cyberhome-simplechat' && data.type === 'chat:open') {
+        clearMinimizeArchiveTimer();
         setIsOpen(true);
       }
     };
@@ -583,6 +589,63 @@ export default function SimpleChat() {
       }));
   }, [messages]);
 
+
+  function clearMinimizeArchiveTimer() {
+    if (minimizeArchiveTimerRef.current) {
+      clearTimeout(minimizeArchiveTimerRef.current);
+      minimizeArchiveTimerRef.current = null;
+    }
+  }
+
+  async function submitConversationArchive(reason = "conversation_archive") {
+    if (archiveSentRef.current || archiveInFlightRef.current) return true;
+
+    archiveInFlightRef.current = true;
+    const safeReason = String(reason || "conversation_archive");
+    const transcriptCount = Array.isArray(transcriptForLead) ? transcriptForLead.length : 0;
+    const attachmentCount = Array.isArray(uploadedFiles) ? uploadedFiles.length : 0;
+
+    try {
+      const resp = await fetch("/api/lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          name: "Conversation Archive",
+          email: ARCHIVE_PLACEHOLDER_EMAIL,
+          note: `Conversation archive triggered by ${safeReason}. Messages: ${transcriptCount}. Attachments: ${attachmentCount}.`,
+          transcript: transcriptForLead,
+          attachments: uploadedFiles,
+          source: `simplechat_${SIMPLECHAT_VERSION.toLowerCase().replace(/\./g, "_")}_${safeReason}`,
+          pageUrl: typeof window !== "undefined" ? window.location.href : "",
+          submittedAt: new Date().toISOString(),
+        }),
+      });
+
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data?.ok) {
+        throw new Error(data?.error || "Conversation archive failed");
+      }
+
+      archiveSentRef.current = true;
+      clearMinimizeArchiveTimer();
+      return true;
+    } catch (error) {
+      console.error("Conversation archive error:", error);
+      return false;
+    } finally {
+      archiveInFlightRef.current = false;
+    }
+  }
+
+  function scheduleMinimizeArchive() {
+    if (archiveSentRef.current) return;
+    clearMinimizeArchiveTimer();
+    minimizeArchiveTimerRef.current = setTimeout(() => {
+      submitConversationArchive("minimize_timeout");
+    }, MINIMIZE_ARCHIVE_DELAY_MS);
+  }
+
   function resetIdleTimer() {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     if (!idlePromptEnabled || hasTriggeredIdleRef.current || leadSubmitted) return;
@@ -602,6 +665,7 @@ export default function SimpleChat() {
   }, [idlePromptEnabled, leadSubmitted, messages]);
 
   function touchActivity() {
+    clearMinimizeArchiveTimer();
     resetIdleTimer();
   }
 
@@ -745,6 +809,8 @@ export default function SimpleChat() {
       const data = await resp.json();
       if (!resp.ok || !data?.ok) throw new Error(data?.error || "Lead submission failed");
 
+      archiveSentRef.current = true;
+      clearMinimizeArchiveTimer();
       setLeadSubmitted(true);
       setIdlePromptEnabled(false);
       removeExistingLeadForms();
@@ -770,7 +836,7 @@ export default function SimpleChat() {
     }
   }
 
-  async function submitRatingPanel() {
+  async function submitRatingPanel(reason = "rating_submit") {
     try {
       await fetch("/api/rating", {
         method: "POST",
@@ -779,7 +845,7 @@ export default function SimpleChat() {
           sessionId,
           rating: ratingValue || 5,
           feedback: ratingFeedback,
-          source: `simplechat_${SIMPLECHAT_VERSION.toLowerCase().replace(/\./g, "_")}_idle`,
+          source: `simplechat_${SIMPLECHAT_VERSION.toLowerCase().replace(/\./g, "_")}_${reason}`,
           pageUrl: typeof window !== "undefined" ? window.location.href : "",
           submittedAt: new Date().toISOString(),
           transcript: transcriptForLead,
@@ -788,6 +854,7 @@ export default function SimpleChat() {
     } catch (e) {
       console.error("rating submit error", e);
     } finally {
+      await submitConversationArchive(reason);
       dismissRatingPanel();
       setMessages((prev) => [
         ...prev,
@@ -914,8 +981,9 @@ export default function SimpleChat() {
     touchActivity();
   }
 
-  function handleEndChat() {
+  async function handleEndChat() {
     touchActivity();
+    await submitConversationArchive("end_chat");
     injectRatingPanel("end_chat");
   }
 
@@ -967,6 +1035,12 @@ export default function SimpleChat() {
     }
   };
 
+  useEffect(() => {
+    return () => {
+      clearMinimizeArchiveTimer();
+    };
+  }, []);
+
   // 监听窗口 resize 和 visualViewport resize
   useEffect(() => {
     const updateKeyboardOffset = () => {
@@ -1006,7 +1080,10 @@ export default function SimpleChat() {
       {/* 悬浮按钮 - 仅在独立模式且窗口关闭时显示 */}
       {!isOpen && (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => {
+            clearMinimizeArchiveTimer();
+            setIsOpen(true);
+          }}
           style={{
             position: "fixed",
             right: 18,
@@ -1070,6 +1147,7 @@ export default function SimpleChat() {
               </button>
               <button
                 onClick={() => {
+                  scheduleMinimizeArchive();
                   setIsOpen(false);
                   if (window.parent && window.parent !== window) {
                     window.parent.postMessage(
@@ -1200,6 +1278,53 @@ export default function SimpleChat() {
                 style={{ width: "100%", resize: "vertical", minHeight: 52, borderRadius: 16, border: "1px solid #d1d5db", padding: "14px 16px", fontSize: 16, outline: "none", boxSizing: "border-box", fontFamily: "Arial, Helvetica, sans-serif" }}
               />
 
+              {uploadError ? (
+                <div style={{ marginTop: 10, color: "#b91c1c", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12, padding: "10px 12px", fontSize: 14 }}>
+                  {uploadError}
+                </div>
+              ) : null}
+
+              {Array.isArray(uploadedFiles) && uploadedFiles.length > 0 ? (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                  {uploadedFiles.map((file) => (
+                    <div
+                      key={file.id || file.url || file.name}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "6px 10px",
+                        border: "1px solid #d1d5db",
+                        borderRadius: 999,
+                        background: "#fff",
+                        fontSize: 13,
+                        color: "#374151",
+                        maxWidth: "100%",
+                      }}
+                    >
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 180 }}>
+                        {file.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeUploadedAttachment(file)}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          color: "#9ca3af",
+                          fontSize: 14,
+                          lineHeight: 1,
+                          padding: 0,
+                        }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
               <div style={{ display: "grid", gridTemplateColumns: "58px 1fr 58px", gap: 10, alignItems: "stretch", marginTop: 10 }}>
                 <label
                   style={{
@@ -1211,11 +1336,12 @@ export default function SimpleChat() {
                     alignItems: "center",
                     justifyContent: "center",
                     fontSize: 22,
-                    cursor: "pointer",
+                    cursor: uploading ? "not-allowed" : "pointer",
+                    opacity: uploading ? 0.7 : 1,
                   }}
                 >
-                  📎
-                  <input type="file" hidden onChange={handleAttachmentChange} disabled={uploading} accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.doc,.docx" onChange={() => {}} />
+                  {uploading ? "…" : "📎"}
+                  <input type="file" hidden onChange={handleAttachmentChange} disabled={uploading} accept=".jpg,.jpeg,.png,.webp,.pdf,.txt,.doc,.docx" />
                 </label>
 
                 <button
