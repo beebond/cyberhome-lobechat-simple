@@ -1,5 +1,7 @@
 // pages/api/lead.js
-// CyberHome SimpleChat V9 lead endpoint
+// CyberHome SimpleChat V9.4 lead endpoint with JSONL logging
+
+import { safeAppendJsonLine } from "./_lib/chatLogger";
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -127,8 +129,6 @@ async function sendViaResend({ to, from, subject, html, text, apiKey, attachment
 }
 
 function convertAttachmentsForResend(attachments = []) {
-  // Resend attachments can be provided as links or base64 content.
-  // Here we forward links in the email body and only include direct content if caller already supplied it.
   return [];
 }
 
@@ -137,9 +137,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  try {
-    const clientIP = getClientIP(req);
+  const clientIP = getClientIP(req);
 
+  try {
     const {
       sessionId = "",
       email = "",
@@ -161,6 +161,16 @@ export default async function handler(req, res) {
     const safeSubmittedAt = sanitizeText(submittedAt, 100);
 
     if (!safeEmail || !isValidEmail(safeEmail)) {
+      safeAppendJsonLine("lead_errors.jsonl", {
+        kind: "lead_error",
+        reason: "invalid_email",
+        clientIP,
+        sessionId: safeSessionId,
+        email: safeEmail,
+        source: safeSource,
+        pageUrl: safePageUrl,
+      });
+
       return res.status(400).json({ ok: false, error: "Invalid email address" });
     }
 
@@ -185,7 +195,7 @@ export default async function handler(req, res) {
       transcript: safeTranscript,
     };
 
-    console.log("=== CyberHome Lead Captured V9 ===");
+    console.log("=== CyberHome Lead Captured V9.4 ===");
     console.log(JSON.stringify(payload, null, 2));
 
     const resendApiKey = process.env.RESEND_API_KEY || "";
@@ -194,6 +204,7 @@ export default async function handler(req, res) {
 
     let emailSent = false;
     let resendResult = null;
+    let emailError = "";
 
     if (resendApiKey && leadToEmail) {
       const subject = `New CyberHome AI Lead - ${safeEmail}`;
@@ -261,28 +272,55 @@ export default async function handler(req, res) {
         transcriptText,
       ].join("\n");
 
-      resendResult = await sendViaResend({
-        to: leadToEmail,
-        from: resendFrom,
-        subject,
-        html,
-        text,
-        attachments: convertAttachmentsForResend(safeAttachments),
-        apiKey: resendApiKey,
-      });
+      try {
+        resendResult = await sendViaResend({
+          to: leadToEmail,
+          from: resendFrom,
+          subject,
+          html,
+          text,
+          apiKey: resendApiKey,
+          attachments: convertAttachmentsForResend(safeAttachments),
+        });
+        emailSent = true;
+      } catch (error) {
+        emailError = error?.message || "Email send failed";
+      }
+    } else {
+      emailError = "Missing RESEND_API_KEY or LEAD_TO_EMAIL";
+    }
 
-      emailSent = true;
+    safeAppendJsonLine("leads.jsonl", {
+      kind: "lead",
+      ...payload,
+      emailSent,
+      emailError,
+      resendId: resendResult?.id || "",
+    });
+
+    if (!emailSent && emailError) {
+      return res.status(500).json({ ok: false, error: emailError });
     }
 
     return res.status(200).json({
       ok: true,
       saved: true,
-      emailSent,
       sessionId: safeSessionId,
-      resendId: resendResult?.id || null,
+      emailSent,
+      attachmentCount: safeAttachments.length,
+      transcriptCount: safeTranscript.length,
+      resendId: resendResult?.id || "",
     });
   } catch (error) {
     console.error("Lead API error:", error);
+
+    safeAppendJsonLine("lead_errors.jsonl", {
+      kind: "lead_error",
+      reason: "exception",
+      clientIP,
+      message: error?.message || "Lead submission failed",
+    });
+
     return res.status(500).json({ ok: false, error: "Lead submission failed" });
   }
 }

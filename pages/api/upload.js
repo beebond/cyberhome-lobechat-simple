@@ -1,9 +1,10 @@
 // pages/api/upload.js
-// CyberHome SimpleChat V9 upload endpoint (lightweight filesystem version)
+// CyberHome SimpleChat V9.4 upload endpoint with JSONL logging
 // Suitable for early testing. For production, replace local disk with S3 / Supabase / Cloudinary.
 
 import fs from "fs";
 import path from "path";
+import { safeAppendJsonLine } from "./_lib/chatLogger";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_MIME_TYPES = new Set([
@@ -18,6 +19,14 @@ const ALLOWED_MIME_TYPES = new Set([
 
 function sanitizeText(value, max = 300) {
   return String(value || "").replace(/\0/g, "").trim().slice(0, max);
+}
+
+function getClientIP(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (typeof forwarded === "string" && forwarded.length > 0) {
+    return forwarded.split(",")[0].trim();
+  }
+  return req.socket?.remoteAddress || "unknown";
 }
 
 function ensureUploadsDir() {
@@ -49,6 +58,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const clientIP = getClientIP(req);
+
   try {
     const {
       name = "",
@@ -63,19 +74,56 @@ export default async function handler(req, res) {
     const safeBase64 = String(base64 || "").trim();
 
     if (!safeName || !safeMimeType || !safeBase64) {
+      safeAppendJsonLine("upload_errors.jsonl", {
+        kind: "upload_error",
+        reason: "missing_file_data",
+        clientIP,
+        source: safeSource,
+        name: safeName,
+        mimeType: safeMimeType,
+      });
+
       return res.status(400).json({ ok: false, error: "Missing file data" });
     }
 
     if (!ALLOWED_MIME_TYPES.has(safeMimeType)) {
+      safeAppendJsonLine("upload_errors.jsonl", {
+        kind: "upload_error",
+        reason: "file_type_not_allowed",
+        clientIP,
+        source: safeSource,
+        name: safeName,
+        mimeType: safeMimeType,
+      });
+
       return res.status(400).json({ ok: false, error: "File type not allowed" });
     }
 
     const buffer = Buffer.from(safeBase64, "base64");
     if (!buffer.length) {
+      safeAppendJsonLine("upload_errors.jsonl", {
+        kind: "upload_error",
+        reason: "invalid_file_content",
+        clientIP,
+        source: safeSource,
+        name: safeName,
+        mimeType: safeMimeType,
+      });
+
       return res.status(400).json({ ok: false, error: "Invalid file content" });
     }
 
     if (buffer.length > MAX_FILE_SIZE) {
+      safeAppendJsonLine("upload_errors.jsonl", {
+        kind: "upload_error",
+        reason: "file_too_large",
+        clientIP,
+        source: safeSource,
+        name: safeName,
+        mimeType: safeMimeType,
+        size: buffer.length,
+      });
+
       return res.status(400).json({ ok: false, error: "File too large" });
     }
 
@@ -89,24 +137,23 @@ export default async function handler(req, res) {
       process.env.RAILWAY_STATIC_URL ||
       "https://cyberhome-ai-simplechat-production.up.railway.app";
 
-    // 关键修复：不要重复带 uploads
     const publicUrl = `${baseUrl}/api/file/chat/${fileName}`;
 
-    console.log("=== CyberHome Upload Captured V9 ===");
-    console.log(
-      JSON.stringify(
-        {
-          name: safeName,
-          mimeType: safeMimeType,
-          size: buffer.length,
-          fileName,
-          publicUrl,
-          source: safeSource,
-        },
-        null,
-        2
-      )
-    );
+    const payload = {
+      kind: "upload",
+      name: safeName,
+      mimeType: safeMimeType,
+      size: buffer.length,
+      fileName,
+      publicUrl,
+      source: safeSource,
+      clientIP,
+    };
+
+    console.log("=== CyberHome Upload Captured V9.4 ===");
+    console.log(JSON.stringify(payload, null, 2));
+
+    safeAppendJsonLine("uploads.jsonl", payload);
 
     return res.status(200).json({
       ok: true,
@@ -118,6 +165,14 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error("Upload API error:", error);
+
+    safeAppendJsonLine("upload_errors.jsonl", {
+      kind: "upload_error",
+      reason: "exception",
+      clientIP,
+      message: error?.message || "Upload failed",
+    });
+
     return res.status(500).json({ ok: false, error: "Upload failed" });
   }
 }

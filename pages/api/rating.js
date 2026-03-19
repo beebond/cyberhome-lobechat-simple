@@ -1,5 +1,7 @@
 // pages/api/rating.js
-// CyberHome SimpleChat V9 rating endpoint
+// CyberHome SimpleChat V9.4 rating endpoint with JSONL logging
+
+import { safeAppendJsonLine } from "./_lib/chatLogger";
 
 function sanitizeText(value, max = 5000) {
   return String(value || "").replace(/\0/g, "").trim().slice(0, max);
@@ -38,12 +40,21 @@ export default async function handler(req, res) {
     const numericRating = Math.max(1, Math.min(5, Number(rating || 0)));
 
     if (!numericRating) {
+      safeAppendJsonLine("rating_errors.jsonl", {
+        kind: "rating_error",
+        reason: "invalid_rating",
+        sessionId: safeSessionId,
+        source: safeSource,
+        clientIP,
+      });
+
       return res.status(400).json({ ok: false, error: "Invalid rating" });
     }
 
-    const safeTranscript = Array.isArray(transcript) ? transcript.slice(-20) : [];
+    const safeTranscript = Array.isArray(transcript) ? transcript.slice(-80) : [];
 
     const payload = {
+      kind: "rating",
       sessionId: safeSessionId,
       rating: numericRating,
       feedback: safeFeedback,
@@ -55,12 +66,21 @@ export default async function handler(req, res) {
       transcript: safeTranscript,
     };
 
-    console.log("=== CyberHome Rating Captured V9 ===");
+    console.log("=== CyberHome Rating Captured V9.4 ===");
     console.log(JSON.stringify(payload, null, 2));
+
+    safeAppendJsonLine("ratings.jsonl", payload);
 
     return res.status(200).json({ ok: true, saved: true, sessionId: safeSessionId });
   } catch (error) {
     console.error("Rating API error:", error);
+
+    safeAppendJsonLine("rating_errors.jsonl", {
+      kind: "rating_error",
+      reason: "exception",
+      message: error?.message || "Rating submission failed",
+    });
+
     return res.status(500).json({ ok: false, error: "Rating submission failed" });
   }
 }
