@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V9.2.4-DS3";
+const SIMPLECHAT_VERSION = "V9.2.4-DS5";
 const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
-const LOGO_URL = "https://cdn.shopify.com/s/files/1/0460/6066/7032/files/LOGO.png?v=1767935662"; // 替换为真实 CDN 地址
+const LOGO_URL = "https://cdn.shopify.com/s/files/1/0460/6066/7032/files/LOGO.png?v=1767935662";
 const BRAND_BLUE = "#19a8e8";
 const HEADER_BG = "#171717";
 const SURFACE = "#f3f4f6";
@@ -438,7 +438,9 @@ export default function SimpleChat() {
   const [sessionId] = useState(() => createSessionId());
   const [isOpen, setIsOpen] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [keyboardOffset, setKeyboardOffset] = useState(0); // 新增状态，用于记录键盘高度
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  const [focused, setFocused] = useState(false);          // 输入框是否聚焦
+  const [initialHeight, setInitialHeight] = useState(null); // 聚焦时的窗口高度
 
   const [leadSubmitting, setLeadSubmitting] = useState(false);
   const [leadSubmitted, setLeadSubmitted] = useState(false);
@@ -458,7 +460,6 @@ export default function SimpleChat() {
   // 监听父页面发来的 open 消息（当用户点击悬浮按钮时）
   useEffect(() => {
     const handleMessage = (event) => {
-      // 可选择性添加来源检查： if (event.origin !== 'https://your-shopify-domain.com') return;
       const data = event.data || {};
       if (data.source === 'cyberhome-simplechat' && data.type === 'chat:open') {
         setIsOpen(true);
@@ -781,23 +782,54 @@ export default function SimpleChat() {
     injectRatingPanel("end_chat");
   }
 
-  // 监听 visualViewport 变化，获取键盘高度（移动端优化）
+  // 输入框焦点处理
+  const handleFocus = () => {
+    setFocused(true);
+    setInitialHeight(window.innerHeight);
+    // 设置一个初始偏移，防止 resize 事件不触发时键盘仍遮挡
+    setKeyboardOffset(200);
+  };
+
+  const handleBlur = () => {
+    setFocused(false);
+    setKeyboardOffset(0);
+    setInitialHeight(null);
+  };
+
+  // 监听窗口 resize，动态计算键盘高度（主方案）
   useEffect(() => {
     const handleResize = () => {
-      if (window.visualViewport) {
+      if (focused && initialHeight) {
+        const newHeight = window.innerHeight;
+        const diff = initialHeight - newHeight;
+        if (diff > 0) {
+          setKeyboardOffset(diff);
+        } else {
+          setKeyboardOffset(0);
+        }
+      } else if (!focused) {
+        setKeyboardOffset(0);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [focused, initialHeight]);
+
+  // 监听 visualViewport 作为备用（兼容性更好）
+  useEffect(() => {
+    const handleViewportResize = () => {
+      if (window.visualViewport && focused) {
         const viewport = window.visualViewport;
         const windowHeight = window.innerHeight;
         const keyboardHeight = windowHeight - viewport.height;
         if (keyboardHeight > 0) {
           setKeyboardOffset(keyboardHeight);
-        } else {
-          setKeyboardOffset(0);
         }
       }
     };
-    window.visualViewport?.addEventListener('resize', handleResize);
-    return () => window.visualViewport?.removeEventListener('resize', handleResize);
-  }, []);
+    window.visualViewport?.addEventListener('resize', handleViewportResize);
+    return () => window.visualViewport?.removeEventListener('resize', handleViewportResize);
+  }, [focused]);
 
   if (!mounted) return null;
 
@@ -841,7 +873,7 @@ export default function SimpleChat() {
           style={{
             position: "fixed",
             right: 18,
-            bottom: `calc(18px + ${keyboardOffset}px)`, // 动态上移避免键盘遮挡
+            bottom: `calc(18px + ${keyboardOffset}px)`,
             width: isExpanded ? "min(1100px, calc(100vw - 40px))" : "min(430px, calc(100vw - 24px))",
             height: isExpanded ? "min(920px, calc(100dvh - 40px))" : "min(820px, calc(100dvh - 24px))",
             maxWidth: "calc(100vw - 24px)",
@@ -854,7 +886,7 @@ export default function SimpleChat() {
             display: "flex",
             flexDirection: "column",
             fontFamily: "Arial, Helvetica, sans-serif",
-            transition: "bottom 0.1s ease-out", // 平滑动画
+            transition: "bottom 0.1s ease-out",
           }}
         >
           {/* 头部 - 固定 */}
@@ -872,13 +904,11 @@ export default function SimpleChat() {
               </button>
               <button
                 onClick={() => {
-                  // 关闭自己
                   setIsOpen(false);
-                  // 通知父页面隐藏 iframe 容器（如果在 iframe 内）
                   if (window.parent && window.parent !== window) {
                     window.parent.postMessage(
                       { source: "cyberhome-simplechat", type: "chat:minimize" },
-                      "*" // 生产环境可替换为您的 Shopify 域名
+                      "*"
                     );
                   }
                 }}
@@ -992,7 +1022,8 @@ export default function SimpleChat() {
                 value={input}
                 onChange={handleInputChange}
                 onKeyDown={onKeyDown}
-                onFocus={touchActivity}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
                 placeholder="Type your message..."
                 rows={1}
                 style={{ width: "100%", resize: "vertical", minHeight: 52, borderRadius: 16, border: "1px solid #d1d5db", padding: "14px 16px", fontSize: 16, outline: "none", boxSizing: "border-box", fontFamily: "Arial, Helvetica, sans-serif" }}
