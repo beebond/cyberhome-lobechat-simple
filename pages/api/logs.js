@@ -1,9 +1,14 @@
 // pages/api/logs.js
-// CyberHome SimpleChat V9.4.1 log viewer API
-// Usage:
+// CyberHome SimpleChat V9.5 log viewer API
+// Usage examples:
 //   /api/logs?type=leads
 //   /api/logs?type=ratings&limit=20
 //   /api/logs?type=uploads&limit=50&offset=0
+//   /api/logs?type=chat&search=lid
+//   /api/logs?type=chat&sessionId=sc_xxx
+//   /api/logs?type=chat&stats=fallback
+//   /api/logs?type=chat&stats=top_questions
+//   /api/logs?type=chat&export=csv
 //
 // Optional protection:
 //   Set LOGS_API_KEY in Railway Variables
@@ -19,13 +24,11 @@ const ALLOWED_TYPES = new Map([
   ["lead_errors", "lead_errors.jsonl"],
   ["rating_errors", "rating_errors.jsonl"],
   ["upload_errors", "upload_errors.jsonl"],
-
-  // ✅ V9.4.2 新增
   ["chat", "chat.jsonl"],
   ["chat_errors", "chat_errors.jsonl"],
 ]);
 
-function sanitizeText(value, max = 100) {
+function sanitizeText(value, max = 200) {
   return String(value || "").replace(/\0/g, "").trim().slice(0, max);
 }
 
@@ -74,6 +77,102 @@ function readJsonlFile(filePath) {
     });
 }
 
+function toSearchableText(item) {
+  return [
+    item?.sessionId || "",
+    item?.userMessage || "",
+    item?.response || "",
+    item?.feedback || "",
+    item?.email || "",
+    item?.note || "",
+    item?.source || "",
+    item?.pageUrl || "",
+    item?.meta?.reason || "",
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
+function toCSV(items) {
+  const header = ["loggedAt", "sessionId", "userMessage", "response", "source", "reason"];
+
+  const rows = items.map((item) => [
+    item?.loggedAt || "",
+    item?.sessionId || "",
+    String(item?.userMessage || "").replace(/"/g, '""'),
+    String(item?.response || "").replace(/"/g, '""'),
+    item?.source || "",
+    item?.meta?.reason || "",
+  ]);
+
+  return [
+    header.join(","),
+    ...rows.map((row) => `"${row.join('","')}"`),
+  ].join("\n");
+}
+
+function applyFilters(items, req) {
+  let filtered = [...items];
+
+  const search = sanitizeText(req.query.search || "", 200).toLowerCase();
+  if (search) {
+    filtered = filtered.filter((item) => toSearchableText(item).includes(search));
+  }
+
+  const sessionId = sanitizeText(req.query.sessionId || "", 200);
+  if (sessionId) {
+    filtered = filtered.filter((item) => String(item?.sessionId || "") === sessionId);
+  }
+
+  const source = sanitizeText(req.query.source || "", 200);
+  if (source) {
+    filtered = filtered.filter((item) => String(item?.source || "") === source);
+  }
+
+  const reason = sanitizeText(req.query.reason || "", 200);
+  if (reason) {
+    filtered = filtered.filter((item) => String(item?.meta?.reason || "") === reason);
+  }
+
+  return filtered;
+}
+
+function buildFallbackStats(items) {
+  const stats = {};
+
+  for (const item of items) {
+    const fallbackTriggered =
+      Boolean(item?.fallbackTriggered) || Boolean(item?.meta?.fallbackTriggered);
+
+    if (!fallbackTriggered) continue;
+
+    const reason = item?.meta?.reason || "unknown";
+    stats[reason] = (stats[reason] || 0) + 1;
+  }
+
+  return stats;
+}
+
+function buildTopQuestions(items) {
+  const counts = {};
+
+  for (const item of items) {
+    const q = String(item?.userMessage || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .slice(0, 160);
+
+    if (!q) continue;
+    counts[q] = (counts[q] || 0) + 1;
+  }
+
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([question, count]) => ({ question, count }));
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -99,18 +198,52 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
 
-    const limit = parsePositiveInt(req.query.limit, 50, 200);
+    const limit = parsePositiveInt(req.query.limit, 50, 500);
     const offset = parsePositiveInt(req.query.offset, 0, 10000);
     const reverse = String(req.query.reverse || "true").toLowerCase() !== "false";
     const includeRawMeta = String(req.query.includeMeta || "false").toLowerCase() === "true";
+    const statsMode = sanitizeText(req.query.stats || "", 50);
+    const exportMode = sanitizeText(req.query.export || "", 20).toLowerCase();
 
     const logsDir = getLogsDir();
     const filePath = path.join(logsDir, fileName);
 
     const items = readJsonlFile(filePath);
-    const total = items.length;
+    const filtered = applyFilters(items, req);
+    const total = filtered.length;
 
-    const ordered = reverse ? [...items].reverse() : items;
+    if (statsMode === "fallback") {
+      return res.status(200).json({
+        ok: true,
+        type: requestedType,
+        stats: buildFallbackStats(filtered),
+        total,
+      });
+    }
+
+    if (statsMode === "top_questions") {
+      return res.status(200).json({
+        ok: true,
+        type: requestedType,
+        top: buildTopQuestions(filtered),
+        total,
+      });
+    }
+
+    if (exportMode === "csv") {
+      const orderedForExport = reverse ? [...filtered].reverse() : filtered;
+      const slicedForExport = orderedForExport.slice(offset, offset + Math.min(limit, 500));
+      const csv = toCSV(slicedForExport);
+
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${requestedType}-${Date.now()}.csv"`
+      );
+      return res.status(200).send(csv);
+    }
+
+    const ordered = reverse ? [...filtered].reverse() : filtered;
     const sliced = ordered.slice(offset, offset + limit);
 
     const response = {
@@ -122,6 +255,12 @@ export default async function handler(req, res) {
       limit,
       offset,
       reverse,
+      filters: {
+        search: sanitizeText(req.query.search || "", 200),
+        sessionId: sanitizeText(req.query.sessionId || "", 200),
+        source: sanitizeText(req.query.source || "", 200),
+        reason: sanitizeText(req.query.reason || "", 200),
+      },
       items: sliced,
     };
 
