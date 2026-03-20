@@ -22,7 +22,7 @@ FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 // Direct-template-first + improved product search
 // =========================
 
-const CHAT_API_VERSION = "V9.4.2";
+const CHAT_API_VERSION = "V9.4.2-DS8";
 
 const rateMap = new Map();
 
@@ -1810,7 +1810,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error("Chat API error:", error);
 
-    return res.status(200).json({
+    const payload = {
       response:
         "Sorry, the service is temporarily unavailable. Please leave your email and our colleague will follow up soon.",
       products: [],
@@ -1829,6 +1829,7 @@ export default async function handler(req, res) {
         reason: "server_error",
       },
     };
+
     logChatResult(
       buildChatLogPayload({
         sessionId,
@@ -1838,8 +1839,20 @@ export default async function handler(req, res) {
         response: payload.response,
         products: payload.products,
         meta: payload.meta,
+        fallbackTriggered: true,
+        error: error?.message || "server_error",
       })
     );
+
+    logChatError({
+      sessionId,
+      clientIP,
+      userMessage,
+      historyCount: Array.isArray(history) ? history.length : 0,
+      message: error?.message || "Chat API exception",
+      stack: String(error?.stack || "").slice(0, 3000),
+    });
+
     return res.status(200).json(payload);
   }
 }
