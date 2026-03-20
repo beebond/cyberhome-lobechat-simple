@@ -20,14 +20,14 @@ if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
 // =========================
-// CyberHome AI Support V9.5.2-merged
+// CyberHome AI Support V9.4.2
 // Direct-template-first + improved product search
 // =========================
 
-const CHAT_API_VERSION = "V9.5.2-merged";
+const CHAT_API_VERSION = "V9.6-DS8";
 
-const rateMap = new Map();
 const PRODUCTS_FILE = path.join(process.cwd(), "products_master.json");
+
 let productsMasterCache = null;
 let productsMasterCacheLoadedAt = 0;
 
@@ -46,6 +46,8 @@ Please contact the original seller on the platform, or reach out to the Bear off
 📧 bearwarranty@bears.com.cn
 
 We currently provide after-sales service only for orders placed directly on CyberHome.`;
+
+const rateMap = new Map();
 
 function getClientIP(req) {
   const forwarded = req.headers["x-forwarded-for"];
@@ -79,6 +81,154 @@ function isTooLong(text) {
 
 function normalizeText(value) {
   return String(value || "").toLowerCase().trim();
+}
+
+function normalizeCatalogText(value) {
+  return normalizeText(value)
+    .replace(/[^a-z0-9\u4e00-\u9fff\s\-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function loadProductsMaster() {
+  const now = Date.now();
+  if (productsMasterCache && now - productsMasterCacheLoadedAt < 60 * 1000) {
+    return productsMasterCache;
+  }
+
+  try {
+    const raw = fs.readFileSync(PRODUCTS_FILE, "utf8");
+    const items = JSON.parse(raw);
+    productsMasterCache = Array.isArray(items) ? items : [];
+    productsMasterCacheLoadedAt = now;
+  } catch (error) {
+    console.error("Failed to load products_master.json:", error);
+    productsMasterCache = [];
+    productsMasterCacheLoadedAt = now;
+  }
+
+  return productsMasterCache;
+}
+
+function buildProductCatalogTerms(product = {}) {
+  const raw = [
+    product.title,
+    product.model,
+    product.series,
+    product.product_type,
+    product.product_family,
+    product.category,
+    product.category_tree,
+    ...(Array.isArray(product.tags) ? product.tags : []),
+    ...(Array.isArray(product.search_keywords) ? product.search_keywords : []),
+  ];
+
+  const terms = new Set();
+
+  for (const value of raw) {
+    const normalized = normalizeCatalogText(value);
+    if (!normalized) continue;
+    terms.add(normalized);
+
+    if (normalized.includes("food processor")) {
+      terms.add("food processor");
+      terms.add("food chopper");
+      terms.add("chopper");
+      terms.add("vegetable chopper");
+      terms.add("garlic chopper");
+    }
+    if (normalized.includes("mixer")) {
+      terms.add("mixer");
+      terms.add("stand mixer");
+      terms.add("hand mixer");
+    }
+    if (normalized.includes("dough maker") || normalized.includes("pasta maker") || normalized.includes("noodle maker")) {
+      terms.add("dough maker");
+      terms.add("pasta maker");
+      terms.add("noodle maker");
+    }
+    if (normalized.includes("baby food maker") || normalized.includes("baby food steamer") || normalized.includes("baby food blender")) {
+      terms.add("baby food maker");
+      terms.add("baby food steamer");
+      terms.add("baby food blender");
+    }
+    if (normalized.includes("bottle warmer")) {
+      terms.add("bottle warmer");
+      terms.add("milk warmer");
+    }
+    if (normalized.includes("nut milk maker") || normalized.includes("soy milk maker") || normalized.includes("oat milk maker")) {
+      terms.add("nut milk maker");
+      terms.add("soy milk maker");
+      terms.add("oat milk maker");
+      terms.add("bean milk maker");
+      terms.add("plant milk maker");
+    }
+    if (normalized.includes("water dispenser")) {
+      terms.add("water dispenser");
+      terms.add("hot water dispenser");
+      terms.add("thermo pot");
+    }
+  }
+
+  return Array.from(terms);
+}
+
+function getCatalogLexicon() {
+  const products = loadProductsMaster();
+  const terms = new Set();
+
+  for (const product of products) {
+    for (const term of buildProductCatalogTerms(product)) {
+      if (term && term.length >= 2) terms.add(term);
+    }
+  }
+
+  return Array.from(terms).sort((a, b) => b.length - a.length);
+}
+
+function findCatalogDirectMatches(text) {
+  const q = normalizeCatalogText(text);
+  if (!q) return [];
+
+  const products = loadProductsMaster();
+  const matches = [];
+
+  for (const product of products) {
+    const terms = buildProductCatalogTerms(product);
+    let score = 0;
+
+    for (const term of terms) {
+      if (!term) continue;
+      if (q === term) score += 120;
+      else if (q.includes(term)) score += Math.min(80, 10 + term.length);
+      else {
+        const parts = term.split(" ").filter(Boolean);
+        if (parts.length >= 2 && parts.every((p) => q.includes(p))) {
+          score += 24;
+        }
+      }
+    }
+
+    if (score > 0) {
+      matches.push({ product, score });
+    }
+  }
+
+  return matches
+    .sort((a, b) => b.score - a.score)
+    .map((item) => item.product);
+}
+
+function isAccessoryQuery(text, history = []) {
+  const q = `${normalizeText(text)} ${extractRecentContext(history)}`;
+  return /(replacement|replacements|part|parts|spare|spares|accessory|accessories|lid|jar|glass jar|cup|blade|seal|gasket|filter|basket|cap|charger|adapter|power cord|pump part|pump parts|配件|零件|备件|盖子|玻璃罐|玻璃杯|刀片|滤芯)/i.test(q);
+}
+
+function isThirdPartyAfterSalesQuery(text, history = []) {
+  const q = `${normalizeText(text)} ${extractRecentContext(history)}`;
+  const issueHit = /(warranty|after sales|after-sales|broken|defect|defective|not working|return|refund|exchange|replacement request|repair|damaged|issue|problem|售后|保修|退货|退款|坏了|损坏|故障)/i.test(q);
+  const platformHit = /(amazon|temu|walmart|ebay|third[\s-]?party|marketplace|platform seller|bought on amazon|purchased on amazon|bought from amazon)/i.test(q);
+  return issueHit && platformHit;
 }
 
 const STOPWORDS = new Set([
@@ -209,106 +359,38 @@ function detectAbuseIntent(text) {
   return { trollHit, injectionHit, blocked: trollHit || injectionHit };
 }
 
+
 function isBusinessRelevant(text, history = []) {
   const q = String(text || "").toLowerCase();
 
   const businessKeywords = [
-    "product",
-    "products",
-    "model",
-    "price",
-    "shipping",
-    "delivery",
-    "warranty",
-    "return",
-    "refund",
-    "voltage",
-    "jar",
-    "yogurt",
-    "rice cooker",
-    "rice cookers",
-    "rice roll",
-    "cheung fun",
-    "cheong fun",
-    "steamer",
-    "blender",
-    "air fryer",
-    "humidifier",
-    "air purifier",
-    "sterilizer",
-    "baby food",
-    "replacement",
-    "parts",
-    "order",
-    "support",
-    "cyberhome",
-    "bear",
-    "glass jar",
-    "canada",
-    "mexico",
-    "tracking",
-    "policy",
-    "contact",
-    "manual",
-    "kettle",
-    "health kettle",
-    "tea kettle",
-    "promotion",
-    "discount",
-    "coupon",
-    "sale",
-    "deal",
-    "blog",
-    "guide",
-    "how to",
-    "fermentation",
-    "warm drinks",
-    "gentle cooking",
-    "vip",
-    "酸奶",
-    "酸奶机",
-    "电饭煲",
-    "肠粉",
-    "蒸",
-    "蒸锅",
-    "搅拌机",
-    "豆浆机",
-    "说明书",
-    "配件",
-    "玻璃杯",
-    "玻璃罐",
-    "发货",
-    "配送",
-    "保修",
-    "退货",
-    "退款",
-    "电压",
-    "订单",
-    "加拿大",
-    "墨西哥",
-    "水壶",
-    "养生壶",
-    "促销",
-    "优惠",
-    "折扣",
-    "活动",
-    "博客",
-    "发酵",
-    "健康饮品",
-    "温热饮品",
-    "轻烹饪",
-    "会员",
-    "vip优惠",
+    "product","products","model","price","shipping","delivery","warranty","return","refund","voltage","jar","yogurt",
+    "rice cooker","rice cookers","rice roll","cheung fun","cheong fun","steamer","blender","air fryer","humidifier",
+    "air purifier","sterilizer","baby food","replacement","parts","order","support","cyberhome","bear","glass jar",
+    "canada","mexico","tracking","policy","contact","manual","kettle","health kettle","tea kettle","promotion",
+    "discount","coupon","sale","deal","blog","guide","how to","fermentation","warm drinks","gentle cooking","vip",
+    "chopper","food chopper","food processor","processor","mixer","stand mixer","hand mixer","juicer","oat milk",
+    "soy milk","nut milk","bean milk","water dispenser","vacuum cleaner","bottle warmer","milk warmer","pasta maker",
+    "dough maker","noodle maker","酸奶","酸奶机","电饭煲","肠粉","蒸","蒸锅","搅拌机","豆浆机","说明书","配件","玻璃杯","玻璃罐",
+    "发货","配送","保修","退货","退款","电压","订单","加拿大","墨西哥","水壶","养生壶","促销","优惠","折扣","活动","博客",
+    "发酵","健康饮品","温热饮品","轻烹饪","会员","vip优惠",
   ];
 
   if (businessKeywords.some((k) => q.includes(k))) return true;
+
+  const catalogTerms = getCatalogLexicon();
+  if (catalogTerms.some((term) => q.includes(term))) return true;
 
   const joinedHistory = String(
     (history || []).slice(-4).map((h) => h?.content || "").join(" ")
   ).toLowerCase();
 
-  return businessKeywords.some((k) => joinedHistory.includes(k));
+  return (
+    businessKeywords.some((k) => joinedHistory.includes(k)) ||
+    catalogTerms.some((term) => joinedHistory.includes(term))
+  );
 }
+
 
 function buildProductURL(handle) {
   if (!handle) return STORE_URL;
@@ -317,13 +399,10 @@ function buildProductURL(handle) {
 }
 
 function normalizeProduct(p) {
-  const firstVariant =
-    Array.isArray(p.variants) && p.variants.length > 0 ? p.variants[0] : {};
-
   return {
     id: p.product_id || p.handle || p.id || Math.random().toString(36).slice(2),
     title: p.title || "Product",
-    price: p.price ?? firstVariant.price ?? "",
+    price: p.price ?? "",
     image: p.image_url || p.image || (Array.isArray(p.images) ? p.images[0] : "") || p.imageUrl || "",
     url: p.url ? buildProductURL(p.url) : buildProductURL(p.handle || p.slug || ""),
     handle: p.handle || "",
@@ -336,18 +415,14 @@ function normalizeProduct(p) {
       "",
     stock_status: p.stock_status || p.stockStatus || "",
     score: Number(p.score || 0),
-    short_description: p.short_description || p.description_short || p.description || "",
-    description: p.description || "",
+    short_description: p.short_description || p.description_short || "",
     tags: Array.isArray(p.tags) ? p.tags : [],
-    search_keywords: Array.isArray(p.search_keywords) ? p.search_keywords : [],
     category: p.category || "",
-    series: p.series || "",
     product_type: p.product_type || p.type || "",
     product_family: p.product_family || "",
     category_tree: p.category_tree || "",
     ai_tags: Array.isArray(p.ai_tags) ? p.ai_tags : [],
     use_case: Array.isArray(p.use_case) ? p.use_case : [],
-    variants: Array.isArray(p.variants) ? p.variants : [],
   };
 }
 
@@ -434,130 +509,6 @@ function getLastAssistantProductSignature(history = []) {
   return "";
 }
 
-
-function loadProductsMaster() {
-  const now = Date.now();
-  if (productsMasterCache && now - productsMasterCacheLoadedAt < 60 * 1000) {
-    return productsMasterCache;
-  }
-
-  try {
-    const raw = fs.readFileSync(PRODUCTS_FILE, "utf8");
-    const parsed = JSON.parse(raw);
-    productsMasterCache = Array.isArray(parsed) ? parsed.map(normalizeProduct) : [];
-  } catch (error) {
-    console.error("Failed to load products_master.json:", error);
-    productsMasterCache = [];
-  }
-
-  productsMasterCacheLoadedAt = now;
-  return productsMasterCache;
-}
-
-function buildCatalogHaystack(product) {
-  return normalizeText(
-    [
-      product.title,
-      product.handle,
-      product.model,
-      product.series,
-      product.product_type,
-      product.product_family,
-      product.category,
-      product.category_tree,
-      product.short_description,
-      product.description,
-      Array.isArray(product.tags) ? product.tags.join(" ") : "",
-      Array.isArray(product.search_keywords) ? product.search_keywords.join(" ") : "",
-      Array.isArray(product.ai_tags) ? product.ai_tags.join(" ") : "",
-      Array.isArray(product.use_case) ? product.use_case.join(" ") : "",
-    ].filter(Boolean).join(" ")
-  );
-}
-
-function getCatalogSearchTerms(products = []) {
-  const terms = new Set();
-  for (const product of products) {
-    const haystack = buildCatalogHaystack(product);
-    if (!haystack) continue;
-    const candidates = [
-      product.title,
-      product.model,
-      product.product_type,
-      product.series,
-      ...(Array.isArray(product.tags) ? product.tags : []),
-      ...(Array.isArray(product.search_keywords) ? product.search_keywords : []),
-    ];
-    for (const c of candidates) {
-      const n = normalizeText(c).replace(/[^a-z0-9\u4e00-\u9fff\s\-]/g, " ").trim();
-      if (n && n.length >= 3) terms.add(n);
-    }
-    // multiword extracted terms
-    haystack.split(/\s+/).forEach((token) => {
-      if (token.length >= 4 && !STOPWORDS.has(token)) terms.add(token);
-    });
-  }
-  return Array.from(terms);
-}
-
-function catalogTermMatched(text, history = []) {
-  const q = `${normalizeText(text)} ${shouldInheritProductContext(text) ? extractRecentContext(history) : ""}`.trim();
-  const products = loadProductsMaster();
-  const terms = getCatalogSearchTerms(products);
-  return terms.some((term) => q.includes(term));
-}
-
-function searchLocalCatalog(userMessage, history = []) {
-  const products = loadProductsMaster();
-  const q = `${normalizeText(userMessage)} ${shouldInheritProductContext(userMessage) ? extractRecentContext(history) : ""}`.trim();
-  const words = tokenize(userMessage);
-
-  const scored = products.map((product) => {
-    const haystack = buildCatalogHaystack(product);
-    let score = 0;
-
-    for (const w of words) {
-      if (haystack.includes(w)) score += w.length >= 4 ? 3 : 1;
-    }
-
-    const titleN = normalizeText(product.title);
-    const modelN = normalizeText(product.model);
-    const typeN = normalizeText(product.product_type);
-    const tagText = normalizeText((product.tags || []).join(" "));
-    const keyText = normalizeText((product.search_keywords || []).join(" "));
-
-    if (modelN && q.includes(modelN)) score += 50;
-    if (titleN && q.includes(titleN)) score += 25;
-    if (typeN && q.includes(typeN)) score += 20;
-
-    if (/food chopper|chopper|food processor|garlic chopper|vegetable chopper/.test(q) &&
-        /food processor|food chopper|garlic chopper|vegetable chopper/.test(`${typeN} ${tagText} ${keyText} ${haystack}`)) score += 35;
-
-    if (/mixer|stand mixer|hand mixer/.test(q) &&
-        /mixer|stand mixer|hand mixer/.test(`${typeN} ${tagText} ${keyText} ${haystack}`)) score += 35;
-
-    if (/replacement|parts|accessory|spare/.test(q) &&
-        /replacement parts|accessories|spare parts/.test(`${typeN} ${tagText} ${keyText} ${haystack}`)) score += 20;
-
-    return { product, score };
-  }).filter((x) => x.score > 0)
-    .sort((a,b) => b.score - a.score);
-
-  return dedupeProducts(scored.map((x) => x.product)).slice(0, 6);
-}
-
-function isAccessoryQuery(text, history = []) {
-  const q = `${normalizeText(text)} ${extractRecentContext(history)}`;
-  return /(replacement|replacements|part|parts|spare|spares|accessory|accessories|lid|jar|glass jar|cup|blade|seal|gasket|filter|basket|cap|charger|adapter|power cord|pump part|pump parts|配件|零件|备件|盖子|玻璃罐|玻璃杯|刀片|滤芯)/i.test(q);
-}
-
-function isThirdPartyAfterSalesQuery(text, history = []) {
-  const q = `${normalizeText(text)} ${extractRecentContext(history)}`;
-  const issueHit = /(warranty|after sales|after-sales|broken|defect|defective|not working|return|refund|exchange|repair|damaged|issue|problem|售后|保修|退货|退款|坏了|损坏|故障)/i.test(q);
-  const platformHit = /(amazon|third party|third-party|marketplace|platform seller|bought on amazon|purchased on amazon|bought from amazon|bought elsewhere|other platform|others)/i.test(q);
-  return issueHit && platformHit;
-}
-
 function isFollowUpMessage(userMessage) {
   const q = normalizeText(userMessage);
   return (
@@ -621,6 +572,7 @@ function shouldInheritProductContext(userMessage) {
   return false;
 }
 
+
 function detectProductFamily(text, history = []) {
   const q = `${normalizeText(text)} ${
     shouldInheritProductContext(text) ? extractRecentContext(history) : ""
@@ -651,7 +603,6 @@ function detectProductFamily(text, history = []) {
     q.includes("cup pot") ||
     q.includes("medicine kettle") ||
     q.includes("herbal kettle") ||
-    q.includes("tea maker") ||
     q.includes("养生壶") ||
     q.includes("kettle") ||
     q.includes("water kettle") ||
@@ -720,10 +671,10 @@ function detectProductFamily(text, history = []) {
 
   if (
     q.includes("food chopper") ||
-    q.includes("vegetable chopper") ||
-    q.includes("garlic chopper") ||
+    q.includes("chopper") ||
     q.includes("food processor") ||
-    q.includes("chopper")
+    q.includes("garlic chopper") ||
+    q.includes("vegetable chopper")
   ) {
     return "food_processor";
   }
@@ -756,11 +707,36 @@ function detectProductFamily(text, history = []) {
   if (q.includes("juicer")) return "juicer";
   if (q.includes("manual") || q.includes("说明书")) return "manual_request";
 
-  // Catalog-driven family catch-all
-  if (catalogTermMatched(text, history)) return "catalog_match";
+  const catalogMatch = findCatalogDirectMatches(q)[0];
+  if (catalogMatch) {
+    const haystack = normalizeCatalogText(
+      [
+        catalogMatch.title,
+        catalogMatch.product_type,
+        catalogMatch.product_family,
+        catalogMatch.series,
+        ...(Array.isArray(catalogMatch.tags) ? catalogMatch.tags : []),
+        ...(Array.isArray(catalogMatch.search_keywords) ? catalogMatch.search_keywords : []),
+      ].join(" ")
+    );
+
+    if (haystack.includes("food processor") || haystack.includes("chopper")) return "food_processor";
+    if (haystack.includes("mixer")) return "mixer";
+    if (haystack.includes("dough maker") || haystack.includes("pasta maker") || haystack.includes("noodle maker")) return "dough_maker";
+    if (haystack.includes("yogurt")) return "yogurt_maker";
+    if (haystack.includes("baby food")) return "baby_food_maker";
+    if (haystack.includes("kettle")) return "kettle";
+    if (haystack.includes("juicer")) return "juicer";
+    if (haystack.includes("air fryer")) return "air_fryer";
+    if (haystack.includes("humidifier")) return "humidifier";
+    if (haystack.includes("air purifier")) return "air_purifier";
+    if (haystack.includes("bottle warmer") || haystack.includes("milk warmer")) return "bottle_warmer";
+  }
 
   return null;
 }
+
+
 
 function familyMatch(product, family) {
   if (!family) return true;
@@ -848,22 +824,14 @@ function familyMatch(product, family) {
     return (
       haystack.includes("food processor") ||
       haystack.includes("food chopper") ||
-      haystack.includes("vegetable chopper") ||
+      haystack.includes("chopper") ||
       haystack.includes("garlic chopper") ||
-      haystack.includes("chopper")
+      haystack.includes("vegetable chopper")
     );
   }
 
   if (family === "mixer") {
     return haystack.includes("mixer");
-  }
-
-  if (family === "accessory") {
-    return haystack.includes("replacement") || haystack.includes("accessories") || haystack.includes("spare parts");
-  }
-
-  if (family === "catalog_match") {
-    return true;
   }
 
   if (family === "air_purifier") {
@@ -885,6 +853,8 @@ function familyMatch(product, family) {
   return true;
 }
 
+
+
 function detectIntent(userMessage, history = []) {
   const current = normalizeText(userMessage);
   const recent = shouldInheritProductContext(userMessage)
@@ -892,10 +862,14 @@ function detectIntent(userMessage, history = []) {
     : "";
   const q = `${current} ${recent}`.trim();
 
+  const catalogTerms = getCatalogLexicon();
+  const catalogProductIntent = catalogTerms.some((term) => q.includes(term));
+
   const productIntent =
-    /(looking for|do you have|recommend|compare|which one|best|model|show me|rice cooker|rice cookers|yogurt|steamer|cheung fun|cheong fun|blender|air fryer|humidifier|sterilizer|jar|parts|manual|kettle|health kettle|tea kettle|bottle warmer|milk warmer|juicer|nut milk|air purifier|food chopper|chopper|food processor|mixer|stand mixer|hand mixer|water dispenser|vacuum cleaner|soy milk maker|oat milk maker|pasta maker|noodle maker|dough maker|酸奶|电饭煲|肠粉|说明书|配件|玻璃罐|养生壶|水壶|有吗|推荐)/i.test(
+    catalogProductIntent ||
+    /(looking for|do you have|recommend|compare|which one|best|model|show me|rice cooker|rice cookers|yogurt|steamer|cheung fun|cheong fun|blender|air fryer|humidifier|sterilizer|jar|parts|manual|kettle|health kettle|tea kettle|bottle warmer|milk warmer|juicer|nut milk|air purifier|chopper|food processor|mixer|stand mixer|hand mixer|water dispenser|soy milk|oat milk|dough maker|pasta maker|noodle maker|酸奶|电饭煲|肠粉|说明书|配件|玻璃罐|养生壶|水壶|有吗|推荐)/i.test(
       q
-    ) || catalogTermMatched(userMessage, history);
+    );
 
   const policyIntent =
     /(shipping|ship|delivery|warranty|return|refund|voltage|canada|mexico|policy|support|contact|about us|promotion|discount|coupon|sale|deal|terms|vip|发货|配送|加拿大|墨西哥|保修|退货|退款|电压|优惠|折扣|促销|活动|条款|会员|联系我们)/i.test(
@@ -910,6 +884,8 @@ function detectIntent(userMessage, history = []) {
   return { productIntent, policyIntent, blogIntent };
 }
 
+
+
 function buildSearchQueries(userMessage, history = []) {
   const q = normalizeText(userMessage);
   const context = shouldInheritProductContext(userMessage)
@@ -918,6 +894,16 @@ function buildSearchQueries(userMessage, history = []) {
   const combined = `${q} ${context}`.trim();
   const family = detectProductFamily(userMessage, history);
   const queries = [userMessage];
+
+  const catalogMatches = findCatalogDirectMatches(combined).slice(0, 3);
+  for (const match of catalogMatches) {
+    if (match?.title) queries.push(match.title);
+    if (match?.model) queries.push(match.model);
+    if (match?.product_type) queries.push(match.product_type);
+    if (Array.isArray(match?.search_keywords)) {
+      queries.push(...match.search_keywords.slice(0, 4));
+    }
+  }
 
   if (combined.includes("yogurt") || combined.includes("酸奶") || family === "yogurt_maker") {
     queries.push("yogurt maker");
@@ -947,6 +933,31 @@ function buildSearchQueries(userMessage, history = []) {
     queries.push("noodle maker");
   }
 
+  if (
+    combined.includes("food chopper") ||
+    combined.includes("chopper") ||
+    combined.includes("food processor") ||
+    combined.includes("garlic chopper") ||
+    combined.includes("vegetable chopper") ||
+    family === "food_processor"
+  ) {
+    queries.push("food processor");
+    queries.push("food chopper");
+    queries.push("vegetable chopper");
+    queries.push("garlic chopper");
+  }
+
+  if (
+    combined.includes("mixer") ||
+    combined.includes("stand mixer") ||
+    combined.includes("hand mixer") ||
+    family === "mixer"
+  ) {
+    queries.push("mixer");
+    queries.push("stand mixer");
+    queries.push("hand mixer");
+  }
+
   if (combined.includes("cup pot") || combined.includes("health kettle") || combined.includes("health pot") || combined.includes("medicine kettle") || combined.includes("herbal kettle") || combined.includes("养生壶") || family === "kettle") {
     queries.push("health kettle");
     queries.push("health pot");
@@ -955,26 +966,6 @@ function buildSearchQueries(userMessage, history = []) {
 
   if (combined.includes("bottle warmer") || combined.includes("milk warmer") || family === "bottle_warmer") {
     queries.push("bottle warmer");
-  }
-
-  if (combined.includes("food chopper") || combined.includes("chopper") || combined.includes("food processor") || family === "food_processor") {
-    queries.push("food chopper");
-    queries.push("food processor");
-    queries.push("vegetable chopper");
-    queries.push("garlic chopper");
-  }
-
-  if (combined.includes("mixer") || family === "mixer") {
-    queries.push("mixer");
-    queries.push("stand mixer");
-    queries.push("hand mixer");
-  }
-
-  const localMatches = searchLocalCatalog(userMessage, history);
-  for (const p of localMatches.slice(0, 3)) {
-    if (p.title) queries.push(p.title);
-    if (p.model) queries.push(p.model);
-    if (p.product_type) queries.push(p.product_type);
   }
 
   if (combined.includes("refund")) {
@@ -989,8 +980,9 @@ function buildSearchQueries(userMessage, history = []) {
     queries.push("fermentation");
   }
 
-  return [...new Set(queries)].slice(0, 8);
+  return [...new Set(queries.filter(Boolean))].slice(0, 10);
 }
+
 
 async function fetchShopifyProductImage(handle) {
   const safeHandle = String(handle || "").trim();
@@ -1065,11 +1057,8 @@ function scoreProduct(product, userMessage, history = []) {
       product.category_tree,
       product.short_description,
       Array.isArray(product.tags) ? product.tags.join(" ") : "",
-      Array.isArray(product.search_keywords) ? product.search_keywords.join(" ") : "",
       Array.isArray(product.ai_tags) ? product.ai_tags.join(" ") : "",
       Array.isArray(product.use_case) ? product.use_case.join(" ") : "",
-      product.series,
-      product.description,
       product.handle,
     ].join(" ")
   );
@@ -1141,14 +1130,6 @@ function scoreProduct(product, userMessage, history = []) {
     score += 18;
   }
 
-  if ((q.includes("food chopper") || q.includes("chopper") || q.includes("food processor")) && (haystack.includes("food processor") || haystack.includes("food chopper") || haystack.includes("garlic chopper") || haystack.includes("vegetable chopper"))) {
-    score += 20;
-  }
-
-  if ((q.includes("mixer") || q.includes("stand mixer") || q.includes("hand mixer")) && haystack.includes("mixer")) {
-    score += 18;
-  }
-
   if ((q.includes("yogurt") || q.includes("酸奶")) && !haystack.includes("yogurt")) {
     score -= 15;
   }
@@ -1166,6 +1147,28 @@ function scoreProduct(product, userMessage, history = []) {
     !(haystack.includes("health kettle") || haystack.includes("health pot") || haystack.includes("medicine kettle") || haystack.includes("herbal kettle") || haystack.includes("tea maker") || haystack.includes("养生壶") || haystack.includes("kettle"))
   ) {
     score -= 12;
+  }
+
+  if (
+    (q.includes("food chopper") || q.includes("chopper") || q.includes("food processor")) &&
+    (haystack.includes("food processor") || haystack.includes("chopper"))
+  ) {
+    score += 18;
+  }
+
+  if (
+    (q.includes("food chopper") || q.includes("chopper") || q.includes("food processor")) &&
+    !(haystack.includes("food processor") || haystack.includes("chopper"))
+  ) {
+    score -= 10;
+  }
+
+  if ((q.includes("mixer") || q.includes("stand mixer") || q.includes("hand mixer")) && haystack.includes("mixer")) {
+    score += 18;
+  }
+
+  if ((q.includes("mixer") || q.includes("stand mixer") || q.includes("hand mixer")) && !haystack.includes("mixer")) {
+    score -= 10;
   }
 
   return score;
@@ -1349,11 +1352,6 @@ function shouldForceFallback({
     "not sure",
     "i do not know",
     "i don't know",
-    "we do not have",
-    "we don't have",
-    "not available",
-    "cannot find",
-    "sorry, but",
   ];
 
   const vagueHit = vaguePatterns.some((p) => text.includes(p));
@@ -1468,14 +1466,13 @@ async function searchKnowledge(userMessage, history = []) {
   allPolicies = dedupeSimpleItems(allPolicies, ["id", "title", "url"]).slice(0, 4);
   allBlogs = dedupeSimpleItems(allBlogs, ["id", "title", "url"]).slice(0, 3);
 
-  let normalizedProducts = allProducts.map(normalizeProduct);
+  const localCatalogMatches = findCatalogDirectMatches(
+    `${userMessage} ${shouldInheritProductContext(userMessage) ? extractRecentContext(history) : ""}`.trim()
+  )
+    .slice(0, 8)
+    .map(normalizeProduct);
 
-  // Merge local products_master matches to avoid missed product cards.
-  const localCatalogMatches = searchLocalCatalog(userMessage, history);
-  if (localCatalogMatches.length > 0) {
-    normalizedProducts = normalizedProducts.concat(localCatalogMatches.map(normalizeProduct));
-  }
-
+  let normalizedProducts = [...localCatalogMatches, ...allProducts.map(normalizeProduct)];
   normalizedProducts = filterInStockIfPossible(normalizedProducts);
   normalizedProducts = dedupeProducts(normalizedProducts);
 
@@ -1566,11 +1563,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  try {
-    const clientIP = getClientIP(req);
-    const { message, history = [], sessionId = "" } = req.body || {};
-    const userMessage = String(message || "").trim();
+  const body = req.body || {};
+  const clientIP = getClientIP(req);
+  const sessionId = String(body.sessionId || "").trim();
+  const history = Array.isArray(body.history) ? body.history : [];
+  const userMessage = String(body.message || "").trim();
 
+  try {
     if (!userMessage) {
       return res.status(400).json({ error: "Missing message" });
     }
@@ -1578,7 +1577,7 @@ export default async function handler(req, res) {
     const latestLanguage = detectLanguage(userMessage, history);
 
     if (!checkRateLimit(clientIP)) {
-      return res.status(200).json({
+      const payload = {
         response:
           latestLanguage === "zh"
             ? "你发送消息太快了，请稍后再试。"
@@ -1595,6 +1594,7 @@ export default async function handler(req, res) {
           sessionId,
         },
       };
+
       logChatResult(
         buildChatLogPayload({
           sessionId,
@@ -1604,13 +1604,15 @@ export default async function handler(req, res) {
           response: payload.response,
           products: payload.products,
           meta: payload.meta,
+          blocked: true,
         })
       );
+
       return res.status(200).json(payload);
     }
 
     if (isTooLong(userMessage)) {
-      return res.status(200).json({
+      const payload = {
         response:
           latestLanguage === "zh"
             ? "请将消息控制在 500 个字符以内，这样我可以更准确地帮助你。"
@@ -1627,6 +1629,7 @@ export default async function handler(req, res) {
           sessionId,
         },
       };
+
       logChatResult(
         buildChatLogPayload({
           sessionId,
@@ -1636,8 +1639,10 @@ export default async function handler(req, res) {
           response: payload.response,
           products: payload.products,
           meta: payload.meta,
+          blocked: true,
         })
       );
+
       return res.status(200).json(payload);
     }
 
@@ -1712,13 +1717,10 @@ export default async function handler(req, res) {
         handoffToHuman: true,
         fallbackTriggered: false,
         meta: {
-          sessionId,
           reason: "accessory_redirect",
           version: CHAT_API_VERSION,
           productsCount: 0,
-          showContactForm: false,
-          fallbackTriggered: false,
-          handoffToHuman: true,
+          sessionId,
         },
       };
       logChatResult(
@@ -1743,13 +1745,10 @@ export default async function handler(req, res) {
         handoffToHuman: true,
         fallbackTriggered: false,
         meta: {
-          sessionId,
           reason: "third_party_after_sales_redirect",
           version: CHAT_API_VERSION,
           productsCount: 0,
-          showContactForm: false,
-          fallbackTriggered: false,
-          handoffToHuman: true,
+          sessionId,
         },
       };
       logChatResult(
@@ -1850,7 +1849,7 @@ export default async function handler(req, res) {
       !blogIntent &&
       (!kb.products || kb.products.length === 0)
     ) {
-      const payload = buildFallbackResponse(latestLanguage, "no_product_match", {
+      const payload = buildFallbackResponse(latestLanguage, "catalog_no_match", {
         sessionId,
         productIntent,
         policyIntent,
@@ -1897,7 +1896,21 @@ export default async function handler(req, res) {
           fallbackTriggered: false,
           handoffToHuman: false,
         },
-      });
+      };
+
+      logChatResult(
+        buildChatLogPayload({
+          sessionId,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+        })
+      );
+
+      return res.status(200).json(payload);
     }
 
     if (shouldDirectBlogAnswer(userMessage, kb, productIntent, policyIntent)) {
@@ -1926,7 +1939,21 @@ export default async function handler(req, res) {
           fallbackTriggered: false,
           handoffToHuman: false,
         },
-      });
+      };
+
+      logChatResult(
+        buildChatLogPayload({
+          sessionId,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+        })
+      );
+
+      return res.status(200).json(payload);
     }
 
     const faqContext = summarizeFaqs(kb.faqs);
@@ -1955,8 +1982,6 @@ export default async function handler(req, res) {
           "Do not invent store policies. " +
           "Do not include any raw URL in the reply. " +
           "Only mention product cards if product cards will actually appear in this response. " +
-          "Never say we do not have, not available, or similar unsupported claims for catalog questions. " +
-          "If product availability is uncertain, rely on the provided product cards or fall back. " +
           "If uncertain, ask one short clarifying question.",
       },
     ];
@@ -2094,7 +2119,10 @@ export default async function handler(req, res) {
         productSignature: shouldReturnProducts ? currentProductSignature : "",
         detailLink: "",
         detailLinkLabel: "",
-        moreLink: shouldReturnProducts && kb.products[0]?.product_type ? `${STORE_URL}/search?q=${encodeURIComponent(kb.products[0].product_type)}` : "",
+        moreLink:
+          shouldReturnProducts && kb.products[0]?.product_type
+            ? `${STORE_URL}/search?q=${encodeURIComponent(kb.products[0].product_type)}`
+            : "",
         moreLinkLabel: latestLanguage === "zh" ? "查看更多" : "More products",
         source: "ai",
         showContactForm: false,
@@ -2104,7 +2132,22 @@ export default async function handler(req, res) {
         outputTokens,
         totalTokens,
       },
-    });
+    };
+
+    logChatResult(
+      buildChatLogPayload({
+        sessionId,
+        clientIP,
+        userMessage,
+        history,
+        response: payload.response,
+        products: payload.products,
+        meta: payload.meta,
+      })
+    );
+
+    return res.status(200).json(payload);
+
   } catch (error) {
     console.error("Chat API error:", error);
 
