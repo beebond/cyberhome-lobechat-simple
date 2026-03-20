@@ -209,6 +209,14 @@ export default async function handler(req, res) {
     if (resendApiKey && leadToEmail) {
       const subject = `New CyberHome AI Lead - ${safeEmail}`;
 
+      const baseUrl =
+        process.env.PUBLIC_BASE_URL ||
+        process.env.NEXT_PUBLIC_BASE_URL ||
+        process.env.RAILWAY_STATIC_URL ||
+        "https://cyberhome-ai-simplechat-production.up.railway.app";
+
+      const csvDownloadUrl = `${String(baseUrl).replace(/\/+$/, "")}/api/logs/download?sessionId=${encodeURIComponent(safeSessionId)}`;
+
       const attachmentListHtml = safeAttachments.length
         ? `<ul>${safeAttachments
             .map(
@@ -227,7 +235,8 @@ export default async function handler(req, res) {
         : "(No attachments)";
 
       const html = `
-        <h2>New CyberHome AI Lead</h2>
+        <div style="font-family: Arial, sans-serif; font-size: 21px; line-height: 1.6; color: #111;">
+        <h2 style="font-family: Arial, sans-serif; font-size: 31px; line-height: 1.4; margin: 0 0 16px;">New CyberHome AI Lead</h2>
         <p><strong>Email:</strong> ${escapeHtml(safeEmail)}</p>
         <p><strong>Session ID:</strong> ${escapeHtml(safeSessionId || "(empty)")}</p>
         <p><strong>Source:</strong> ${escapeHtml(safeSource)}</p>
@@ -238,15 +247,17 @@ export default async function handler(req, res) {
         <p><strong>Input Tokens:</strong> ${tokenUsage.inputTokens}</p>
         <p><strong>Output Tokens:</strong> ${tokenUsage.outputTokens}</p>
         <p><strong>Total Tokens:</strong> ${tokenUsage.totalTokens}</p>
+        <p><strong>Chat Log CSV:</strong> <a href="${escapeHtml(csvDownloadUrl)}" style="font-family: Arial, sans-serif; font-size: 21px;">Download CSV</a></p>
         <hr />
         <p><strong>User Message:</strong></p>
-        <pre>${escapeHtml(safeNote || "(empty)")}</pre>
+        <pre style="font-family: Arial, sans-serif; font-size: 21px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;">${escapeHtml(safeNote || "(empty)")}</pre>
         <hr />
         <p><strong>Attachments:</strong></p>
         ${attachmentListHtml}
         <hr />
         <p><strong>Transcript:</strong></p>
-        <pre>${escapeHtml(transcriptText)}</pre>
+        <pre style="font-family: Arial, sans-serif; font-size: 21px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;">${escapeHtml(transcriptText)}</pre>
+        </div>
       `;
 
       const text = [
@@ -261,6 +272,9 @@ export default async function handler(req, res) {
         `Input Tokens: ${tokenUsage.inputTokens}`,
         `Output Tokens: ${tokenUsage.outputTokens}`,
         `Total Tokens: ${tokenUsage.totalTokens}`,
+        "",
+        "Chat Log CSV:",
+        csvDownloadUrl,
         "",
         "User Message:",
         safeNote || "(empty)",
