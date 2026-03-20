@@ -1,10 +1,10 @@
 // pages/api/logs.js
-// CyberHome SimpleChat V9.5 log viewer API
+// CyberHome SimpleChat V9.6.2 log viewer API
+// Persistent-volume preferred. Falls back to local data/logs.
+//
 // Usage examples:
-//   /api/logs?type=leads
-//   /api/logs?type=ratings&limit=20
-//   /api/logs?type=uploads&limit=50&offset=0
-//   /api/logs?type=chat&search=lid
+//   /api/logs?type=chat
+//   /api/logs?type=chat&search=chopper
 //   /api/logs?type=chat&sessionId=sc_xxx
 //   /api/logs?type=chat&stats=fallback
 //   /api/logs?type=chat&stats=top_questions
@@ -12,10 +12,11 @@
 //
 // Optional protection:
 //   Set LOGS_API_KEY in Railway Variables
-//   Then call /api/logs?type=leads&key=YOUR_KEY
+//   Then call /api/logs?type=chat&key=YOUR_KEY
 
 import fs from "fs";
 import path from "path";
+import { getPreferredLogsDir } from "./_lib/chatLogger";
 
 const ALLOWED_TYPES = new Map([
   ["leads", "leads.jsonl"],
@@ -30,10 +31,6 @@ const ALLOWED_TYPES = new Map([
 
 function sanitizeText(value, max = 200) {
   return String(value || "").replace(/\0/g, "").trim().slice(0, max);
-}
-
-function getLogsDir() {
-  return path.join(process.cwd(), "data", "logs");
 }
 
 function getClientIP(req) {
@@ -203,9 +200,9 @@ export default async function handler(req, res) {
     const reverse = String(req.query.reverse || "true").toLowerCase() !== "false";
     const includeRawMeta = String(req.query.includeMeta || "false").toLowerCase() === "true";
     const statsMode = sanitizeText(req.query.stats || "", 50);
-    const exportMode = sanitizeText(req.query.export || "", 20).toLowerCase();
+    const exportMode = sanitizeText(req.query.export || req.query.format || "", 20).toLowerCase();
 
-    const logsDir = getLogsDir();
+    const logsDir = getPreferredLogsDir();
     const filePath = path.join(logsDir, fileName);
 
     const items = readJsonlFile(filePath);
@@ -232,7 +229,7 @@ export default async function handler(req, res) {
 
     if (exportMode === "csv") {
       const orderedForExport = reverse ? [...filtered].reverse() : filtered;
-      const slicedForExport = orderedForExport.slice(offset, offset + Math.min(limit, 500));
+      const slicedForExport = orderedForExport.slice(offset, offset + Math.min(limit, 2000));
       const csv = toCSV(slicedForExport);
 
       res.setHeader("Content-Type", "text/csv; charset=utf-8");
