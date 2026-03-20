@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import OpenAI from "openai";
+import { safeAppendJsonLine } from "./_lib/chatLogger";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -19,11 +20,11 @@ if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
 // =========================
-// CyberHome AI Support V8.4
-// Direct-template-first + improved product search
+// CyberHome AI Support V9.6.3
+// Minimal patch: logging + intent guard + product keyword fix
 // =========================
 
-const CHAT_API_VERSION = "V9.6.1-DS8";
+const CHAT_API_VERSION = "V9.6.3";
 const PRODUCTS_FILE = path.join(process.cwd(), "products_master.json");
 
 const rateMap = new Map();
@@ -709,6 +710,7 @@ function detectProductFamily(text, history = []) {
   }
   if (
     q.includes("food processor") ||
+    q.includes("food processors") ||
     q.includes("chopper") ||
     q.includes("garlic chopper") ||
     q.includes("vegetable chopper")
@@ -848,7 +850,7 @@ function detectIntent(userMessage, history = []) {
   const q = `${current} ${recent}`.trim();
 
   const productIntent =
-    /(looking for|do you have|recommend|compare|which one|best|model|show me|rice cooker|rice cookers|yogurt|steamer|cheung fun|cheong fun|blender|air fryer|humidifier|sterilizer|jar|parts|manual|kettle|health kettle|tea kettle|bottle warmer|milk warmer|juicer|nut milk|air purifier|food processor|chopper|garlic chopper|vegetable chopper|mixer|stand mixer|hand mixer|water dispenser|vacuum cleaner|酸奶|电饭煲|肠粉|说明书|配件|玻璃罐|养生壶|水壶|有吗|推荐)/i.test(
+    /(looking for|do you have|recommend|compare|which one|best|model|show me|rice cooker|rice cookers|yogurt|steamer|cheung fun|cheong fun|blender|air fryer|humidifier|sterilizer|jar|parts|manual|kettle|health kettle|tea kettle|bottle warmer|milk warmer|juicer|nut milk|air purifier|food processor|food processors|chopper|garlic chopper|vegetable chopper|mixer|stand mixer|hand mixer|water dispenser|vacuum cleaner|酸奶|电饭煲|肠粉|说明书|配件|玻璃罐|养生壶|水壶|有吗|推荐)/i.test(
       q
     ) || catalogMatchesMessage(q);
 
@@ -1083,7 +1085,7 @@ function scoreProduct(product, userMessage, history = []) {
   }
 
   if (
-    (q.includes("food processor") || q.includes("chopper")) &&
+    (q.includes("food processor") || q.includes("food processors") || q.includes("chopper") || q.includes("garlic chopper")) &&
     (haystack.includes("food processor") || haystack.includes("chopper"))
   ) {
     score += 20;
@@ -1226,6 +1228,18 @@ function getPolicyLinkLabel(policy, lang) {
     en: "View Policy",
     zh: "查看政策页面",
   });
+}
+
+function sanitizeForLog(value, max = 4000) {
+  return String(value || "").replace(/ /g, "").slice(0, max);
+}
+
+function writeChatLog(payload) {
+  try {
+    safeAppendJsonLine("chat.jsonl", payload);
+  } catch (error) {
+    console.error("Failed to write chat.jsonl:", error);
+  }
 }
 
 function getBlogLinkLabel(blog, lang) {
@@ -1477,24 +1491,57 @@ export default async function handler(req, res) {
 
     const latestLanguage = detectLanguage(userMessage, history);
 
-    if (isAccessoryOnlyQuery(userMessage)) {
-      return res.status(200).json({
-        response: ACCESSORY_RESPONSE,
-        products: [],
-        showContactForm: false,
-        handoffToHuman: true,
-        fallbackTriggered: false,
-        meta: {
-          reason: "accessory_redirect",
-          version: CHAT_API_VERSION,
-          productsCount: 0,
-          sessionId,
-        },
+    const sendJsonWithLog = (status, payload, reason = "") => {
+      const meta = payload?.meta || {};
+      writeChatLog({
+        loggedAt: new Date().toISOString(),
+        kind: "chat",
+        version: CHAT_API_VERSION,
+        sessionId,
+        clientIP,
+        message: sanitizeForLog(userMessage, 2000),
+        response: sanitizeForLog(payload?.response || "", 4000),
+        reason: reason || meta.reason || "",
+        latestLanguage,
+        productsCount: Number(meta.productsCount || (Array.isArray(payload?.products) ? payload.products.length : 0) || 0),
+        faqCount: Number(meta.faqCount || 0),
+        policyCount: Number(meta.policyCount || 0),
+        blogCount: Number(meta.blogCount || 0),
+        productIntent: Boolean(meta.productIntent),
+        policyIntent: Boolean(meta.policyIntent),
+        blogIntent: Boolean(meta.blogIntent),
+        fallbackTriggered: Boolean(payload?.fallbackTriggered || meta.fallbackTriggered),
+        handoffToHuman: Boolean(payload?.handoffToHuman || meta.handoffToHuman),
+        source: meta.source || "",
       });
-    }
+      return res.status(status).json(payload);
+    };
+
+    const currentIntent = detectIntent(userMessage, []);
+    const currentFamily = detectProductFamily(userMessage, []);
+    const currentProductIntent =
+      currentIntent.productIntent ||
+      [
+        "yogurt_maker",
+        "rice_cooker",
+        "rice_roll_steamer",
+        "dough_maker",
+        "blender",
+        "air_fryer",
+        "humidifier",
+        "air_purifier",
+        "sterilizer",
+        "bottle_warmer",
+        "baby_food_maker",
+        "nut_milk_maker",
+        "food_processor",
+        "mixer",
+        "juicer",
+        "kettle",
+      ].includes(currentFamily);
 
     if (isThirdPartyAfterSalesQuery(userMessage)) {
-      return res.status(200).json({
+      return sendJsonWithLog(200, {
         response: THIRD_PARTY_AFTERSALES_RESPONSE,
         products: [],
         showContactForm: false,
@@ -1506,11 +1553,27 @@ export default async function handler(req, res) {
           productsCount: 0,
           sessionId,
         },
-      });
+      }, "third_party_after_sales_redirect");
+    }
+
+    if (isAccessoryOnlyQuery(userMessage) && !currentProductIntent) {
+      return sendJsonWithLog(200, {
+        response: ACCESSORY_RESPONSE,
+        products: [],
+        showContactForm: false,
+        handoffToHuman: true,
+        fallbackTriggered: false,
+        meta: {
+          reason: "accessory_redirect",
+          version: CHAT_API_VERSION,
+          productsCount: 0,
+          sessionId,
+        },
+      }, "accessory_redirect");
     }
 
     if (!checkRateLimit(clientIP)) {
-      return res.status(200).json({
+      return sendJsonWithLog(200, {
         response:
           latestLanguage === "zh"
             ? "你发送消息太快了，请稍后再试。"
@@ -1526,11 +1589,11 @@ export default async function handler(req, res) {
           productsCount: 0,
           sessionId,
         },
-      });
+      }, "rate_limit");
     }
 
     if (isTooLong(userMessage)) {
-      return res.status(200).json({
+      return sendJsonWithLog(200, {
         response:
           latestLanguage === "zh"
             ? "请将消息控制在 500 个字符以内，这样我可以更准确地帮助你。"
@@ -1546,12 +1609,12 @@ export default async function handler(req, res) {
           productsCount: 0,
           sessionId,
         },
-      });
+      }, "message_too_long");
     }
 
     const abuse = detectAbuseIntent(userMessage);
     if (abuse.blocked) {
-      return res.status(200).json({
+      return sendJsonWithLog(200, {
         response:
           latestLanguage === "zh"
             ? "我可以协助解答 CyberHome 产品、发货、保修和店铺相关问题。请告诉我你的产品或售前售后问题。"
@@ -1567,11 +1630,11 @@ export default async function handler(req, res) {
           productsCount: 0,
           sessionId,
         },
-      });
+      }, abuse.injectionHit ? "prompt_injection" : "non_business_abuse");
     }
 
     if (!isBusinessRelevant(userMessage, history)) {
-      return res.status(200).json({
+      return sendJsonWithLog(200, {
         response:
           latestLanguage === "zh"
             ? "我可以协助解答 CyberHome 产品、发货、保修、订单、兼容性、说明书、博客知识和店铺政策相关问题。请告诉我你需要什么帮助。"
@@ -1583,14 +1646,14 @@ export default async function handler(req, res) {
           productsCount: 0,
           sessionId,
         },
-      });
+      }, "non_business_query");
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return res.status(200).json(
+      return sendJsonWithLog(200,
         buildFallbackResponse(latestLanguage, "openai_not_configured", {
           sessionId,
-        })
+        }), "openai_not_configured"
       );
     }
 
@@ -1598,13 +1661,13 @@ export default async function handler(req, res) {
     const detectedFamily = detectProductFamily(userMessage, history);
 
     if (detectedFamily === "unsupported_or_unverified") {
-      return res.status(200).json(
+      return sendJsonWithLog(200,
         buildFallbackResponse(latestLanguage, "unsupported_or_unverified", {
           sessionId,
           productIntent,
           policyIntent,
           blogIntent,
-        })
+        }), "unsupported_or_unverified"
       );
     }
 
@@ -1621,13 +1684,13 @@ export default async function handler(req, res) {
       (!kb.policies || kb.policies.length === 0) &&
       (!kb.blogs || kb.blogs.length === 0)
     ) {
-      return res.status(200).json(
+      return sendJsonWithLog(200,
         buildFallbackResponse(latestLanguage, "no_search_result", {
           sessionId,
           productIntent,
           policyIntent,
           blogIntent,
-        })
+        }), "no_search_result"
       );
     }
 
@@ -1637,13 +1700,13 @@ export default async function handler(req, res) {
       !blogIntent &&
       (!kb.products || kb.products.length === 0)
     ) {
-      return res.status(200).json(
+      return sendJsonWithLog(200,
         buildFallbackResponse(latestLanguage, "no_product_match", {
           sessionId,
           productIntent,
           policyIntent,
           blogIntent,
-        })
+        }), "no_product_match"
       );
     }
 
@@ -1652,7 +1715,7 @@ export default async function handler(req, res) {
     // =========================
     if (shouldDirectPolicyAnswer(userMessage, kb)) {
       const policy = kb.policies[0];
-      return res.status(200).json({
+      return sendJsonWithLog(200, {
         response: buildPolicyDirectResponse(policy, latestLanguage),
         products: [],
         meta: {
@@ -1673,12 +1736,12 @@ export default async function handler(req, res) {
           fallbackTriggered: false,
           handoffToHuman: false,
         },
-      });
+      }, "policy_direct_answer");
     }
 
     if (shouldDirectBlogAnswer(userMessage, kb, productIntent, policyIntent)) {
       const blog = kb.blogs[0];
-      return res.status(200).json({
+      return sendJsonWithLog(200, {
         response: buildBlogDirectResponse(blog, latestLanguage),
         products: [],
         showContactForm: false,
@@ -1702,7 +1765,7 @@ export default async function handler(req, res) {
           fallbackTriggered: false,
           handoffToHuman: false,
         },
-      });
+      }, "blog_direct_answer");
     }
 
     const faqContext = summarizeFaqs(kb.faqs);
@@ -1819,7 +1882,7 @@ export default async function handler(req, res) {
     });
 
     if (fallbackCheck.fallback) {
-      return res.status(200).json(
+      return sendJsonWithLog(200,
         buildFallbackResponse(latestLanguage, fallbackCheck.reason, {
           sessionId,
           productIntent,
@@ -1829,11 +1892,11 @@ export default async function handler(req, res) {
           inputTokens,
           outputTokens,
           totalTokens,
-        })
+        }), fallbackCheck.reason
       );
     }
 
-    return res.status(200).json({
+    return sendJsonWithLog(200, {
       response: responseText,
       products: shouldReturnProducts
         ? blogIntent
@@ -1867,11 +1930,11 @@ export default async function handler(req, res) {
         outputTokens,
         totalTokens,
       },
-    });
+    }, "ai_response");
   } catch (error) {
     console.error("Chat API error:", error);
 
-    return res.status(200).json({
+    return sendJsonWithLog(200, {
       response:
         "Sorry, the service is temporarily unavailable. Please leave your email and our colleague will follow up soon.",
       products: [],
@@ -1889,6 +1952,6 @@ export default async function handler(req, res) {
         handoffToHuman: true,
         reason: "server_error",
       },
-    });
+    }, "server_error");
   }
 }
