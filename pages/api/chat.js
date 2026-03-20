@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { safeAppendJsonLine } from "./_lib/chatLogger";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -17,11 +18,11 @@ if (FAQ_API_URL && !/^https?:\/\//i.test(FAQ_API_URL)) {
 FAQ_API_URL = FAQ_API_URL.replace(/\/+$/, "");
 
 // =========================
-// CyberHome AI Support V8.4
+// CyberHome AI Support V9.4.2
 // Direct-template-first + improved product search
 // =========================
 
-const CHAT_API_VERSION = "V8.4";
+const CHAT_API_VERSION = "V9.4.2";
 
 const rateMap = new Map();
 
@@ -1276,6 +1277,56 @@ async function searchKnowledge(userMessage, history = []) {
   };
 }
 
+
+function buildChatLogPayload({
+  sessionId = "",
+  clientIP = "unknown",
+  userMessage = "",
+  history = [],
+  response = "",
+  products = [],
+  meta = {},
+  blocked = false,
+  fallbackTriggered = false,
+  error = "",
+}) {
+  return {
+    kind: "chat",
+    sessionId: String(sessionId || "").trim(),
+    clientIP,
+    userMessage: String(userMessage || "").trim(),
+    historyCount: Array.isArray(history) ? history.length : 0,
+    history: Array.isArray(history) ? history.slice(-12) : [],
+    response: String(response || "").trim(),
+    productsCount: Array.isArray(products) ? products.length : 0,
+    products: Array.isArray(products)
+      ? products.slice(0, 5).map((p) => ({
+          title: p?.title || "",
+          model: p?.model || "",
+          handle: p?.handle || "",
+          price: p?.price || "",
+          product_type: p?.product_type || "",
+        }))
+      : [],
+    meta: meta || {},
+    blocked: Boolean(blocked),
+    fallbackTriggered: Boolean(fallbackTriggered),
+    error: String(error || "").trim(),
+  };
+}
+
+function logChatResult(payload) {
+  safeAppendJsonLine("chat.jsonl", payload);
+}
+
+function logChatError(payload) {
+  safeAppendJsonLine("chat_errors.jsonl", {
+    kind: "chat_error",
+    ...payload,
+  });
+}
+
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -1309,7 +1360,19 @@ export default async function handler(req, res) {
           productsCount: 0,
           sessionId,
         },
-      });
+      };
+      logChatResult(
+        buildChatLogPayload({
+          sessionId,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+        })
+      );
+      return res.status(200).json(payload);
     }
 
     if (isTooLong(userMessage)) {
@@ -1329,12 +1392,24 @@ export default async function handler(req, res) {
           productsCount: 0,
           sessionId,
         },
-      });
+      };
+      logChatResult(
+        buildChatLogPayload({
+          sessionId,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+        })
+      );
+      return res.status(200).json(payload);
     }
 
     const abuse = detectAbuseIntent(userMessage);
     if (abuse.blocked) {
-      return res.status(200).json({
+      const payload = {
         response:
           latestLanguage === "zh"
             ? "我可以协助解答 CyberHome 产品、发货、保修和店铺相关问题。请告诉我你的产品或售前售后问题。"
@@ -1350,11 +1425,24 @@ export default async function handler(req, res) {
           productsCount: 0,
           sessionId,
         },
-      });
+      };
+      logChatResult(
+        buildChatLogPayload({
+          sessionId,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+          blocked: true,
+        })
+      );
+      return res.status(200).json(payload);
     }
 
     if (!isBusinessRelevant(userMessage, history)) {
-      return res.status(200).json({
+      const payload = {
         response:
           latestLanguage === "zh"
             ? "我可以协助解答 CyberHome 产品、发货、保修、订单、兼容性、说明书、博客知识和店铺政策相关问题。请告诉我你需要什么帮助。"
@@ -1366,29 +1454,64 @@ export default async function handler(req, res) {
           productsCount: 0,
           sessionId,
         },
-      });
+      };
+      logChatResult(
+        buildChatLogPayload({
+          sessionId,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+          blocked: true,
+        })
+      );
+      return res.status(200).json(payload);
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return res.status(200).json(
-        buildFallbackResponse(latestLanguage, "openai_not_configured", {
+      const payload = buildFallbackResponse(latestLanguage, "openai_not_configured", {
+        sessionId,
+      });
+      logChatResult(
+        buildChatLogPayload({
           sessionId,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+          fallbackTriggered: true,
         })
       );
+      return res.status(200).json(payload);
     }
 
     const { productIntent, policyIntent, blogIntent } = detectIntent(userMessage, history);
     const detectedFamily = detectProductFamily(userMessage, history);
 
     if (detectedFamily === "unsupported_or_unverified") {
-      return res.status(200).json(
-        buildFallbackResponse(latestLanguage, "unsupported_or_unverified", {
+      const payload = buildFallbackResponse(latestLanguage, "unsupported_or_unverified", {
+        sessionId,
+        productIntent,
+        policyIntent,
+        blogIntent,
+      });
+      logChatResult(
+        buildChatLogPayload({
           sessionId,
-          productIntent,
-          policyIntent,
-          blogIntent,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+          fallbackTriggered: true,
         })
       );
+      return res.status(200).json(payload);
     }
 
     let kb = { faqs: [], products: [], policies: [], blogs: [] };
@@ -1404,14 +1527,25 @@ export default async function handler(req, res) {
       (!kb.policies || kb.policies.length === 0) &&
       (!kb.blogs || kb.blogs.length === 0)
     ) {
-      return res.status(200).json(
-        buildFallbackResponse(latestLanguage, "no_search_result", {
+      const payload = buildFallbackResponse(latestLanguage, "no_search_result", {
+        sessionId,
+        productIntent,
+        policyIntent,
+        blogIntent,
+      });
+      logChatResult(
+        buildChatLogPayload({
           sessionId,
-          productIntent,
-          policyIntent,
-          blogIntent,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+          fallbackTriggered: true,
         })
       );
+      return res.status(200).json(payload);
     }
 
     if (
@@ -1420,14 +1554,25 @@ export default async function handler(req, res) {
       !blogIntent &&
       (!kb.products || kb.products.length === 0)
     ) {
-      return res.status(200).json(
-        buildFallbackResponse(latestLanguage, "no_product_match", {
+      const payload = buildFallbackResponse(latestLanguage, "no_product_match", {
+        sessionId,
+        productIntent,
+        policyIntent,
+        blogIntent,
+      });
+      logChatResult(
+        buildChatLogPayload({
           sessionId,
-          productIntent,
-          policyIntent,
-          blogIntent,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+          fallbackTriggered: true,
         })
       );
+      return res.status(200).json(payload);
     }
 
     // =========================
@@ -1435,7 +1580,7 @@ export default async function handler(req, res) {
     // =========================
     if (shouldDirectPolicyAnswer(userMessage, kb)) {
       const policy = kb.policies[0];
-      return res.status(200).json({
+      const payload = {
         response: buildPolicyDirectResponse(policy, latestLanguage),
         products: [],
         meta: {
@@ -1461,7 +1606,7 @@ export default async function handler(req, res) {
 
     if (shouldDirectBlogAnswer(userMessage, kb, productIntent, policyIntent)) {
       const blog = kb.blogs[0];
-      return res.status(200).json({
+      const payload = {
         response: buildBlogDirectResponse(blog, latestLanguage),
         products: [],
         showContactForm: false,
@@ -1602,21 +1747,32 @@ export default async function handler(req, res) {
     });
 
     if (fallbackCheck.fallback) {
-      return res.status(200).json(
-        buildFallbackResponse(latestLanguage, fallbackCheck.reason, {
+      const payload = buildFallbackResponse(latestLanguage, fallbackCheck.reason, {
+        sessionId,
+        productIntent,
+        policyIntent,
+        blogIntent,
+        latestLanguage,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+      });
+      logChatResult(
+        buildChatLogPayload({
           sessionId,
-          productIntent,
-          policyIntent,
-          blogIntent,
-          latestLanguage,
-          inputTokens,
-          outputTokens,
-          totalTokens,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+          fallbackTriggered: true,
         })
       );
+      return res.status(200).json(payload);
     }
 
-    return res.status(200).json({
+    const payload = {
       response: responseText,
       products: shouldReturnProducts
         ? blogIntent
@@ -1672,6 +1828,18 @@ export default async function handler(req, res) {
         handoffToHuman: true,
         reason: "server_error",
       },
-    });
+    };
+    logChatResult(
+      buildChatLogPayload({
+        sessionId,
+        clientIP,
+        userMessage,
+        history,
+        response: payload.response,
+        products: payload.products,
+        meta: payload.meta,
+      })
+    );
+    return res.status(200).json(payload);
   }
 }

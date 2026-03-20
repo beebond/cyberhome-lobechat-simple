@@ -19,6 +19,10 @@ const ALLOWED_TYPES = new Map([
   ["lead_errors", "lead_errors.jsonl"],
   ["rating_errors", "rating_errors.jsonl"],
   ["upload_errors", "upload_errors.jsonl"],
+
+  // ✅ V9.4.2 新增
+  ["chat", "chat.jsonl"],
+  ["chat_errors", "chat_errors.jsonl"],
 ]);
 
 function sanitizeText(value, max = 100) {
