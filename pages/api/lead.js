@@ -1,5 +1,6 @@
 // pages/api/lead.js
 // CyberHome SimpleChat V9.4 lead endpoint with JSONL logging
+// Minimal patch: add internal CSV download link and adjust email typography
 
 import { safeAppendJsonLine } from "./_lib/chatLogger";
 
@@ -208,55 +209,64 @@ export default async function handler(req, res) {
 
     if (resendApiKey && leadToEmail) {
       const subject = `New CyberHome AI Lead - ${safeEmail}`;
-
       const baseUrl =
-        process.env.PUBLIC_BASE_URL ||
         process.env.NEXT_PUBLIC_BASE_URL ||
-        process.env.RAILWAY_STATIC_URL ||
         "https://cyberhome-ai-simplechat-production.up.railway.app";
-
-      const csvDownloadUrl = `${String(baseUrl).replace(/\/+$/, "")}/api/logs/download?sessionId=${encodeURIComponent(safeSessionId)}`;
+      const csvDownloadUrl = `${baseUrl}/api/logs/download?sessionId=${encodeURIComponent(
+        safeSessionId
+      )}`;
 
       const attachmentListHtml = safeAttachments.length
-        ? `<ul>${safeAttachments
+        ? `<ul style="margin: 8px 0 0 20px; padding: 0;">${safeAttachments
             .map(
               (a) =>
-                `<li><strong>${escapeHtml(a.name || "Attachment")}</strong>${
+                `<li style="margin: 6px 0;"><strong>${escapeHtml(a.name || "Attachment")}</strong>${
                   a.mimeType ? ` (${escapeHtml(a.mimeType)})` : ""
                 }${a.url ? ` - <a href="${escapeHtml(a.url)}">Open file</a>` : ""}</li>`
             )
             .join("")}</ul>`
-        : "<p>(No attachments)</p>";
+        : '<p style="margin: 8px 0;">(No attachments)</p>';
 
       const attachmentListText = safeAttachments.length
         ? safeAttachments
-            .map((a) => `- ${a.name || "Attachment"}${a.mimeType ? ` (${a.mimeType})` : ""}${a.url ? ` - ${a.url}` : ""}`)
+            .map(
+              (a) =>
+                `- ${a.name || "Attachment"}${a.mimeType ? ` (${a.mimeType})` : ""}${
+                  a.url ? ` - ${a.url}` : ""
+                }`
+            )
             .join("\n")
         : "(No attachments)";
 
       const html = `
-        <div style="font-family: Arial, sans-serif; font-size: 21px; line-height: 1.6; color: #111;">
-        <h2 style="font-family: Arial, sans-serif; font-size: 31px; line-height: 1.4; margin: 0 0 16px;">New CyberHome AI Lead</h2>
-        <p><strong>Email:</strong> ${escapeHtml(safeEmail)}</p>
-        <p><strong>Session ID:</strong> ${escapeHtml(safeSessionId || "(empty)")}</p>
-        <p><strong>Source:</strong> ${escapeHtml(safeSource)}</p>
-        <p><strong>Fallback Reason:</strong> ${escapeHtml(safeFallbackReason || "(empty)")}</p>
-        <p><strong>Page URL:</strong> ${escapeHtml(safePageUrl || "(empty)")}</p>
-        <p><strong>Submitted At:</strong> ${escapeHtml(safeSubmittedAt)}</p>
-        <p><strong>Client IP:</strong> ${escapeHtml(clientIP)}</p>
-        <p><strong>Input Tokens:</strong> ${tokenUsage.inputTokens}</p>
-        <p><strong>Output Tokens:</strong> ${tokenUsage.outputTokens}</p>
-        <p><strong>Total Tokens:</strong> ${tokenUsage.totalTokens}</p>
-        <p><strong>Chat Log CSV:</strong> <a href="${escapeHtml(csvDownloadUrl)}" style="font-family: Arial, sans-serif; font-size: 21px;">Download CSV</a></p>
-        <hr />
-        <p><strong>User Message:</strong></p>
-        <pre style="font-family: Arial, sans-serif; font-size: 21px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;">${escapeHtml(safeNote || "(empty)")}</pre>
-        <hr />
-        <p><strong>Attachments:</strong></p>
-        ${attachmentListHtml}
-        <hr />
-        <p><strong>Transcript:</strong></p>
-        <pre style="font-family: Arial, sans-serif; font-size: 21px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;">${escapeHtml(transcriptText)}</pre>
+        <div style="font-family: Arial, sans-serif; font-size: 17px; line-height: 1.6; color: #111827;">
+          <h2 style="font-family: Arial, sans-serif; font-size: 24px; line-height: 1.3; margin: 0 0 16px 0;">New CyberHome AI Lead</h2>
+          <p style="margin: 8px 0;"><strong>Email:</strong> ${escapeHtml(safeEmail)}</p>
+          <p style="margin: 8px 0;"><strong>Session ID:</strong> ${escapeHtml(safeSessionId || "(empty)")}</p>
+          <p style="margin: 8px 0;"><strong>Source:</strong> ${escapeHtml(safeSource)}</p>
+          <p style="margin: 8px 0;"><strong>Fallback Reason:</strong> ${escapeHtml(safeFallbackReason || "(empty)")}</p>
+          <p style="margin: 8px 0;"><strong>Page URL:</strong> ${escapeHtml(safePageUrl || "(empty)")}</p>
+          <p style="margin: 8px 0;"><strong>Submitted At:</strong> ${escapeHtml(safeSubmittedAt)}</p>
+          <p style="margin: 8px 0;"><strong>Client IP:</strong> ${escapeHtml(clientIP)}</p>
+          <p style="margin: 8px 0;"><strong>Input Tokens:</strong> ${tokenUsage.inputTokens}</p>
+          <p style="margin: 8px 0;"><strong>Output Tokens:</strong> ${tokenUsage.outputTokens}</p>
+          <p style="margin: 8px 0;"><strong>Total Tokens:</strong> ${tokenUsage.totalTokens}</p>
+          <hr style="margin: 18px 0; border: none; border-top: 1px solid #d1d5db;" />
+          <p style="margin: 8px 0;"><strong>Chat Log CSV:</strong></p>
+          <p style="margin: 8px 0;"><a href="${escapeHtml(csvDownloadUrl)}" style="font-family: Arial, sans-serif;">Download CSV</a></p>
+          <hr style="margin: 18px 0; border: none; border-top: 1px solid #d1d5db;" />
+          <p style="margin: 8px 0;"><strong>User Message:</strong></p>
+          <pre style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; background: #f9fafb; border: 1px solid #e5e7eb; padding: 12px; margin: 8px 0;">${escapeHtml(
+            safeNote || "(empty)"
+          )}</pre>
+          <hr style="margin: 18px 0; border: none; border-top: 1px solid #d1d5db;" />
+          <p style="margin: 8px 0;"><strong>Attachments:</strong></p>
+          ${attachmentListHtml}
+          <hr style="margin: 18px 0; border: none; border-top: 1px solid #d1d5db;" />
+          <p style="margin: 8px 0;"><strong>Transcript:</strong></p>
+          <pre style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; background: #f9fafb; border: 1px solid #e5e7eb; padding: 12px; margin: 8px 0;">${escapeHtml(
+            transcriptText
+          )}</pre>
         </div>
       `;
 
