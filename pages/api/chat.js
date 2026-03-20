@@ -1332,11 +1332,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  try {
-    const clientIP = getClientIP(req);
-    const { message, history = [], sessionId = "" } = req.body || {};
-    const userMessage = String(message || "").trim();
+  const body = req.body || {};
+  const clientIP = getClientIP(req);
+  const sessionId = String(body.sessionId || "").trim();
+  const history = Array.isArray(body.history) ? body.history : [];
+  const userMessage = String(body.message || "").trim();
 
+  try {
     if (!userMessage) {
       return res.status(400).json({ error: "Missing message" });
     }
@@ -1344,7 +1346,7 @@ export default async function handler(req, res) {
     const latestLanguage = detectLanguage(userMessage, history);
 
     if (!checkRateLimit(clientIP)) {
-      return res.status(200).json({
+      const payload = {
         response:
           latestLanguage === "zh"
             ? "你发送消息太快了，请稍后再试。"
@@ -1361,6 +1363,7 @@ export default async function handler(req, res) {
           sessionId,
         },
       };
+
       logChatResult(
         buildChatLogPayload({
           sessionId,
@@ -1370,13 +1373,15 @@ export default async function handler(req, res) {
           response: payload.response,
           products: payload.products,
           meta: payload.meta,
+          blocked: true,
         })
       );
+
       return res.status(200).json(payload);
     }
 
     if (isTooLong(userMessage)) {
-      return res.status(200).json({
+      const payload = {
         response:
           latestLanguage === "zh"
             ? "请将消息控制在 500 个字符以内，这样我可以更准确地帮助你。"
@@ -1393,6 +1398,7 @@ export default async function handler(req, res) {
           sessionId,
         },
       };
+
       logChatResult(
         buildChatLogPayload({
           sessionId,
@@ -1402,8 +1408,10 @@ export default async function handler(req, res) {
           response: payload.response,
           products: payload.products,
           meta: payload.meta,
+          blocked: true,
         })
       );
+
       return res.status(200).json(payload);
     }
 
@@ -1601,7 +1609,21 @@ export default async function handler(req, res) {
           fallbackTriggered: false,
           handoffToHuman: false,
         },
-      });
+      };
+
+      logChatResult(
+        buildChatLogPayload({
+          sessionId,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+        })
+      );
+
+      return res.status(200).json(payload);
     }
 
     if (shouldDirectBlogAnswer(userMessage, kb, productIntent, policyIntent)) {
@@ -1630,7 +1652,21 @@ export default async function handler(req, res) {
           fallbackTriggered: false,
           handoffToHuman: false,
         },
-      });
+      };
+
+      logChatResult(
+        buildChatLogPayload({
+          sessionId,
+          clientIP,
+          userMessage,
+          history,
+          response: payload.response,
+          products: payload.products,
+          meta: payload.meta,
+        })
+      );
+
+      return res.status(200).json(payload);
     }
 
     const faqContext = summarizeFaqs(kb.faqs);
@@ -1796,7 +1832,10 @@ export default async function handler(req, res) {
         productSignature: shouldReturnProducts ? currentProductSignature : "",
         detailLink: "",
         detailLinkLabel: "",
-        moreLink: shouldReturnProducts && kb.products[0]?.product_type ? `${STORE_URL}/search?q=${encodeURIComponent(kb.products[0].product_type)}` : "",
+        moreLink:
+          shouldReturnProducts && kb.products[0]?.product_type
+            ? `${STORE_URL}/search?q=${encodeURIComponent(kb.products[0].product_type)}`
+            : "",
         moreLinkLabel: latestLanguage === "zh" ? "查看更多" : "More products",
         source: "ai",
         showContactForm: false,
@@ -1806,7 +1845,22 @@ export default async function handler(req, res) {
         outputTokens,
         totalTokens,
       },
-    });
+    };
+
+    logChatResult(
+      buildChatLogPayload({
+        sessionId,
+        clientIP,
+        userMessage,
+        history,
+        response: payload.response,
+        products: payload.products,
+        meta: payload.meta,
+      })
+    );
+
+    return res.status(200).json(payload);
+
   } catch (error) {
     console.error("Chat API error:", error);
 
