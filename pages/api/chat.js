@@ -1352,6 +1352,13 @@ function shouldForceFallback({
   return { fallback: false, reason: "" };
 }
 
+function summarizeProductSupport(items) {
+  return (items || [])
+    .slice(0, 2)
+    .map((f) => `Support Q: ${f.question || f.title}\nSupport A: ${f.answer || ""}`)
+    .join("\n\n");
+}
+
 function summarizeFaqs(faqs) {
   return (faqs || [])
     .slice(0, 2)
@@ -1371,6 +1378,24 @@ function summarizeBlogs(blogs) {
     .slice(0, 1)
     .map((b) => `Blog: ${b.title || ""}\n${b.summary || ""}`)
     .join("\n\n");
+}
+
+function pickBestProductSupportHit(kb, { productIntent, policyIntent, blogIntent }) {
+  if (!kb || !Array.isArray(kb.productSupport) || kb.productSupport.length === 0) {
+    return null;
+  }
+
+  // Keep original product recommendation / policy / blog priority intact
+  if (productIntent) return null;
+  if (policyIntent || blogIntent) return null;
+
+  const top = kb.productSupport[0];
+  if (!top || !top.answer) return null;
+
+  // Conservative threshold to avoid weak matches
+  if (Number(top.score || 0) < 10) return null;
+
+  return top;
 }
 
 async function searchKnowledge(userMessage, history = []) {
@@ -1394,6 +1419,12 @@ async function searchKnowledge(userMessage, history = []) {
         return sum + arr.length;
       }, 0);
 
+      const cumulativeProductSupport = results.reduce(
+        (sum, item) =>
+          sum + (Array.isArray(item?.productSupportMatches) ? item.productSupportMatches.length : 0),
+        0
+      );
+
       const cumulativePolicies = results.reduce(
         (sum, item) => sum + (Array.isArray(item?.policyMatches) ? item.policyMatches.length : 0),
         0
@@ -1410,17 +1441,26 @@ async function searchKnowledge(userMessage, history = []) {
       }
 
       // For non-product searches, one strong result is enough.
-      if (cumulativePolicies > 0 || cumulativeBlogs > 0 || cumulativeProducts > 0) break;
+      if (
+        cumulativeProductSupport > 0 ||
+        cumulativePolicies > 0 ||
+        cumulativeBlogs > 0 ||
+        cumulativeProducts > 0
+      ) break;
     } catch (e) {}
   }
 
   let allFaqs = [];
+  let allProductSupport = [];
   let allProducts = [];
   let allPolicies = [];
   let allBlogs = [];
 
   for (const data of results) {
     const faqMatches = Array.isArray(data?.faqMatches) ? data.faqMatches : [];
+    const productSupportMatches = Array.isArray(data?.productSupportMatches)
+      ? data.productSupportMatches
+      : [];
     const productMatches = Array.isArray(data?.productMatches)
       ? data.productMatches
       : Array.isArray(data?.products)
@@ -1430,10 +1470,16 @@ async function searchKnowledge(userMessage, history = []) {
     const blogMatches = Array.isArray(data?.blogMatches) ? data.blogMatches : [];
 
     allFaqs = allFaqs.concat(faqMatches);
+    allProductSupport = allProductSupport.concat(productSupportMatches);
     allProducts = allProducts.concat(productMatches);
     allPolicies = allPolicies.concat(policyMatches);
     allBlogs = allBlogs.concat(blogMatches);
   }
+
+  allProductSupport = dedupeSimpleItems(
+    allProductSupport,
+    ["id", "title", "question", "url", "support_model"]
+  ).slice(0, 6);
 
   allFaqs = dedupeSimpleItems(allFaqs, ["id", "title", "question", "url"]).slice(0, 6);
   allPolicies = dedupeSimpleItems(allPolicies, ["id", "title", "url"]).slice(0, 4);
@@ -1446,6 +1492,7 @@ async function searchKnowledge(userMessage, history = []) {
   if (family === "manual_request") {
     return {
       faqs: allFaqs,
+      productSupport: allProductSupport,
       products: [],
       policies: allPolicies,
       blogs: allBlogs,
@@ -1469,6 +1516,7 @@ async function searchKnowledge(userMessage, history = []) {
 
   return {
     faqs: allFaqs,
+    productSupport: allProductSupport,
     products: rankedProducts,
     policies: allPolicies,
     blogs: allBlogs,
@@ -1671,7 +1719,7 @@ export default async function handler(req, res) {
       );
     }
 
-    let kb = { faqs: [], products: [], policies: [], blogs: [] };
+    let kb = { faqs: [], productSupport: [], products: [], policies: [], blogs: [] };
     try {
       kb = await searchKnowledge(userMessage, history);
     } catch (err) {
@@ -1680,6 +1728,7 @@ export default async function handler(req, res) {
 
     if (
       (!kb.faqs || kb.faqs.length === 0) &&
+      (!kb.productSupport || kb.productSupport.length === 0) &&
       (!kb.products || kb.products.length === 0) &&
       (!kb.policies || kb.policies.length === 0) &&
       (!kb.blogs || kb.blogs.length === 0)
@@ -1713,6 +1762,47 @@ export default async function handler(req, res) {
     // =========================
     // Direct template answers first
     // =========================
+    const productSupportHit = pickBestProductSupportHit(kb, {
+      productIntent,
+      policyIntent,
+      blogIntent,
+    });
+
+    if (productSupportHit) {
+      return sendJsonWithLog(
+        200,
+        {
+          response: productSupportHit.answer,
+          products: [],
+          showContactForm: false,
+          handoffToHuman: false,
+          fallbackTriggered: false,
+          meta: {
+            sessionId,
+            directAnswer: true,
+            source: "knowledge_base",
+            reason: "product_support_hit",
+            knowledgeId: productSupportHit.id || "",
+            supportModel: productSupportHit.support_model || "",
+            supportFamily: productSupportHit.support_family || "",
+            productsCount: 0,
+            faqCount: kb.faqs.length,
+            productSupportCount: kb.productSupport.length,
+            policyCount: kb.policies.length,
+            blogCount: kb.blogs.length,
+            policyIntent,
+            productIntent,
+            blogIntent,
+            latestLanguage,
+            showContactForm: false,
+            fallbackTriggered: false,
+            handoffToHuman: false,
+          },
+        },
+        "product_support_hit"
+      );
+    }
+
     if (shouldDirectPolicyAnswer(userMessage, kb)) {
       const policy = kb.policies[0];
       return sendJsonWithLog(200, {
@@ -1768,6 +1858,7 @@ export default async function handler(req, res) {
       }, "blog_direct_answer");
     }
 
+    const productSupportContext = summarizeProductSupport(kb.productSupport);
     const faqContext = summarizeFaqs(kb.faqs);
     const policyContext = summarizePolicies(kb.policies);
     const blogContext = summarizeBlogs(kb.blogs);
@@ -1797,6 +1888,13 @@ export default async function handler(req, res) {
           "If uncertain, ask one short clarifying question.",
       },
     ];
+
+    if (productSupportContext) {
+      messages.push({
+        role: "system",
+        content: `Relevant product support knowledge:\n\n${productSupportContext}`,
+      });
+    }
 
     if (productIntent && faqContext) {
       messages.push({
@@ -1911,6 +2009,7 @@ export default async function handler(req, res) {
             : Math.min(kb.products.length, 3)
           : 0,
         faqCount: kb.faqs.length,
+        productSupportCount: kb.productSupport.length,
         policyCount: kb.policies.length,
         blogCount: kb.blogs.length,
         policyIntent,
