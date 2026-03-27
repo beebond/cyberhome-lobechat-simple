@@ -543,20 +543,16 @@ function buildSystemPrompt({ latestLanguage, pageContext, conversationIntent, pr
     "Be warm, concise, and practical. Sound like a helpful product specialist, not a generic chatbot."
   ];
 
-  if (pageContext && (pageContext.pageType || pageContext.productFamily || pageContext.productModel || pageContext.pageTitle)) {
+if (pageContext && (pageContext.pageType || pageContext.productFamily || pageContext.productModel || pageContext.pageTitle)) {
     parts.push(
       `Current page context:
-- page type: ${pageContext.pageType || "unknown"}` +
-      `
-- product family: ${pageContext.productFamily || "unknown"}` +
-      `
-- product model: ${pageContext.productModel || "unknown"}` +
-      `
-- page title: ${pageContext.pageTitle || "unknown"}` +
-      "
-Use this context to prioritize relevant answers when the customer question is ambiguous, but do not mention internal context unless it helps the customer."
+- page type: ${pageContext.pageType || "unknown"}
+- product family: ${pageContext.productFamily || "unknown"}
+- product model: ${pageContext.productModel || "unknown"}
+- page title: ${pageContext.pageTitle || "unknown"}
+Use this context to prioritize relevant answers when the customer question is ambiguous, but do not mention internal context unless it helps the customer.`
     );
-  }
+}
 
   if (conversationIntent) {
     parts.push(
