@@ -327,7 +327,7 @@ function detectLanguage(userMessage, history = []) {
   const q = normalizeText(msg);
 
   if (/[\u4e00-\u9fff]/.test(msg)) return "zh";
-  if (/[谩茅铆贸煤帽驴隆]/i.test(msg)) return "es";
+  if (/[áéíóúñ¿¡]/i.test(msg)) return "es";
   if (/\b(der|die|das|und|bitte|danke|hallo)\b/i.test(msg)) return "de";
   if (/\b(bonjour|merci|avec|pour)\b/i.test(msg)) return "fr";
 
@@ -437,39 +437,39 @@ function isBusinessRelevant(text, history = []) {
     "gentle cooking",
     "vip",
     "酸奶",
-    "酸奶机,
-    "电饭煲,
-    "鑲犵矇",
-    "钂?,
-    "钂搁攨",
-    "搅拌机,
-    "璞嗘祮鏈?,
-    "说明书,
+    "酸奶机",
+    "电饭煲",
+    "肠粉",
+    "蒸",
+    "蒸锅",
+    "搅拌机",
+    "豆浆机",
+    "说明书",
     "配件",
-    "玻璃杯,
-    "玻璃罐,
+    "玻璃杯",
+    "玻璃罐",
     "发货",
-    "配送,
+    "配送",
     "保修",
-    "退货,
+    "退货",
     "退款",
     "电压",
-    "璁㈠崟",
-    "加拿大,
-    "墨西哥,
-    "姘村６",
-    "养生壶,
+    "订单",
+    "加拿大",
+    "墨西哥",
+    "水壶",
+    "养生壶",
     "促销",
-    "浼樻儬",
-    "鎶樻墸",
-    "娲诲姩",
+    "优惠",
+    "折扣",
+    "活动",
     "博客",
     "发酵",
     "健康饮品",
     "温热饮品",
-    "轻烹饪,
+    "轻烹饪",
     "会员",
-    "vip浼樻儬",
+    "vip优惠",
   ];
 
   if (businessKeywords.some((k) => q.includes(k))) return true;
@@ -613,23 +613,23 @@ function isFollowUpMessage(userMessage) {
       "what about",
       "how about",
       "有吗",
-      "杩欎釜鍛?,
-      "閭ｈ繖涓?,
+      "这个吗",
+      "那这个",
       "请问",
       "好的",
-      "行,
-      "缁х画",
-      "鏇村",
-      "杩樻湁鍚?,
+      "行",
+      "继续",
+      "更多",
+      "还有吗",
       "manual",
-      "说明书,
+      "说明书",
       "配件",
       "jar",
       "glass jar",
       "canada",
       "mexico",
-      "加拿大,
-      "墨西哥,
+      "加拿大",
+      "墨西哥",
       "refund",
       "return",
       "shipping",
@@ -652,7 +652,7 @@ function shouldInheritProductContext(userMessage) {
 
   if (
     q.length <= 40 &&
-    /(what about|how about|this one|that one|jar|glass jar|lid|parts|accessory|manual|more|another|还有吗|这个吗|那这个|配件|玻璃杯|玻璃罐/i.test(
+    /(what about|how about|this one|that one|jar|glass jar|lid|parts|accessory|manual|more|another|还有吗|这个吗|那这个|配件|玻璃杯|玻璃罐)/i.test(
       q
     )
   ) {
@@ -694,7 +694,7 @@ function detectProductFamily(text, history = []) {
     q.includes("medicine kettle") ||
     q.includes("herbal kettle") ||
     q.includes("tea maker") ||
-    q.includes("养生壶) ||
+    q.includes("养生壶") ||
     q.includes("kettle") ||
     q.includes("water kettle") ||
     q.includes("tea kettle")
@@ -706,8 +706,8 @@ function detectProductFamily(text, history = []) {
     (current.includes("glass jar") ||
       current.includes("replacement jar") ||
       current.includes("replacement lid") ||
-      current.includes("玻璃罐) ||
-      current.includes("玻璃杯)) &&
+      current.includes("玻璃罐") ||
+      current.includes("玻璃杯")) &&
     isAccessoryOnlyQuery(current)
   ) {
     if (current.includes("yogurt") || current.includes("酸奶")) return "yogurt_accessory";
@@ -732,8 +732,8 @@ function detectProductFamily(text, history = []) {
     q.includes("rice cooker") ||
     q.includes("rice cookers") ||
     q.includes("rice maker") ||
-    q.includes("电饭煲) ||
-    q.includes("鐓キ")
+    q.includes("电饭煲") ||
+    q.includes("煮饭")
   ) {
     return "rice_cooker";
   }
@@ -743,8 +743,8 @@ function detectProductFamily(text, history = []) {
     q.includes("cheung fun") ||
     q.includes("cheong fun") ||
     q.includes("rice noodle roll") ||
-    q.includes("鑲犵矇") ||
-    q.includes("绫崇毊")
+    q.includes("肠粉") ||
+    q.includes("米皮")
   ) {
     return "rice_roll_steamer";
   }
@@ -762,12 +762,12 @@ function detectProductFamily(text, history = []) {
     return "dough_maker";
   }
 
-  if (q.includes("blender") || q.includes("搅拌机)) return "blender";
+  if (q.includes("blender") || q.includes("搅拌机")) return "blender";
   if (q.includes("air fryer")) return "air_fryer";
   if (q.includes("humidifier")) return "humidifier";
   if (q.includes("air purifier")) return "air_purifier";
   if (q.includes("sterilizer")) return "sterilizer";
-  if (q.includes("bottle warmer") || q.includes("milk warmer") || q.includes("鏆栧ザ")) {
+  if (q.includes("bottle warmer") || q.includes("milk warmer") || q.includes("暖奶器")) {
     return "bottle_warmer";
   }
   if (
@@ -778,7 +778,7 @@ function detectProductFamily(text, history = []) {
     q.includes("baby food steamer") ||
     q.includes("baby puree") ||
     q.includes("baby food") ||
-    q.includes("杈呴")
+    q.includes("辅食")
   ) return "baby_food_maker";
   if (q.includes("nut milk") || q.includes("soy milk") || q.includes("oat milk")) {
     return "nut_milk_maker";
@@ -798,7 +798,7 @@ function detectProductFamily(text, history = []) {
   ) return "mixer";
 
   if (q.includes("juicer")) return "juicer";
-  if (q.includes("manual") || q.includes("说明书)) return "manual_request";
+  if (q.includes("manual") || q.includes("说明书")) return "manual_request";
 
   return null;
 }
@@ -834,7 +834,7 @@ function familyMatch(product, family) {
       haystack.includes("herbal kettle") ||
       haystack.includes("tea maker") ||
       haystack.includes("tea kettle") ||
-      haystack.includes("养生壶)
+      haystack.includes("养生壶")
     );
   }
 
@@ -935,7 +935,7 @@ function detectIntent(userMessage, history = []) {
     );
 
   const blogIntent =
-    /(how to|guide|blog|healthy|wellness|fermentation|warm drinks|gentle cooking|benefits|homemade yogurt|make yogurt|nutrition|gut health|probiotic|如何|教程|指南|博客|发酵|温热饮品|轻烹饪|健康|酸奶怎么做/i.test(
+    /(how to|guide|blog|healthy|wellness|fermentation|warm drinks|gentle cooking|benefits|homemade yogurt|make yogurt|nutrition|gut health|probiotic|如何|教程|指南|博客|发酵|温热饮品|轻烹饪|健康|酸奶怎么做)/i.test(
       current
     );
 
@@ -959,7 +959,7 @@ function buildSearchQueries(userMessage, history = []) {
     queries.push("black yogurt maker");
   }
 
-  if (combined.includes("baby food") || combined.includes("杈呴") || family === "baby_food_maker") {
+  if (combined.includes("baby food") || combined.includes("辅食") || family === "baby_food_maker") {
     queries.push("baby food maker");
     queries.push("baby care appliance");
     queries.push("baby food steamer blender");
@@ -979,7 +979,15 @@ function buildSearchQueries(userMessage, history = []) {
     queries.push("noodle maker");
   }
 
-  if (combined.includes("cup pot") || combined.includes("health kettle") || combined.includes("health pot") || combined.includes("medicine kettle") || combined.includes("herbal kettle") || combined.includes("养生壶) || family === "kettle") {
+  if (
+    combined.includes("cup pot") ||
+    combined.includes("health kettle") ||
+    combined.includes("health pot") ||
+    combined.includes("medicine kettle") ||
+    combined.includes("herbal kettle") ||
+    combined.includes("养生壶") ||
+    family === "kettle"
+  ) {
     queries.push("health kettle");
     queries.push("health pot");
     queries.push("medicine kettle");
@@ -1132,7 +1140,7 @@ function scoreProduct(product, userMessage, history = []) {
     score += 4;
   }
 
-  if ((q.includes("baby food") || q.includes("baby puree") || q.includes("杈呴")) && (haystack.includes("baby food") || haystack.includes("baby puree") || haystack.includes("baby care appliance"))) {
+  if ((q.includes("baby food") || q.includes("baby puree") || q.includes("辅食")) && (haystack.includes("baby food") || haystack.includes("baby puree") || haystack.includes("baby care appliance"))) {
     score += 18;
   }
 
@@ -1148,7 +1156,21 @@ function scoreProduct(product, userMessage, history = []) {
     score += 20;
   }
 
-  if ((q.includes("health kettle") || q.includes("health pot") || q.includes("cup pot") || q.includes("medicine kettle") || q.includes("herbal kettle") || q.includes("养生壶)) && (haystack.includes("health kettle") || haystack.includes("health pot") || haystack.includes("medicine kettle") || haystack.includes("herbal kettle") || haystack.includes("tea maker") || haystack.includes("养生壶) || haystack.includes("kettle"))) {
+  if (
+    (q.includes("health kettle") ||
+      q.includes("health pot") ||
+      q.includes("cup pot") ||
+      q.includes("medicine kettle") ||
+      q.includes("herbal kettle") ||
+      q.includes("养生壶")) &&
+    (haystack.includes("health kettle") ||
+      haystack.includes("health pot") ||
+      haystack.includes("medicine kettle") ||
+      haystack.includes("herbal kettle") ||
+      haystack.includes("tea maker") ||
+      haystack.includes("养生壶") ||
+      haystack.includes("kettle"))
+  ) {
     score += 18;
   }
 
@@ -1192,7 +1214,7 @@ function scoreProduct(product, userMessage, history = []) {
     score -= 15;
   }
 
-  if ((q.includes("baby food") || q.includes("baby puree") || q.includes("杈呴")) && !(haystack.includes("baby food") || haystack.includes("baby puree") || haystack.includes("baby care appliance"))) {
+  if ((q.includes("baby food") || q.includes("baby puree") || q.includes("辅食")) && !(haystack.includes("baby food") || haystack.includes("baby puree") || haystack.includes("baby care appliance"))) {
     score -= 12;
   }
 
@@ -1201,8 +1223,19 @@ function scoreProduct(product, userMessage, history = []) {
   }
 
   if (
-    (q.includes("health kettle") || q.includes("health pot") || q.includes("cup pot") || q.includes("medicine kettle") || q.includes("herbal kettle") || q.includes("养生壶)) &&
-    !(haystack.includes("health kettle") || haystack.includes("health pot") || haystack.includes("medicine kettle") || haystack.includes("herbal kettle") || haystack.includes("tea maker") || haystack.includes("养生壶) || haystack.includes("kettle"))
+    (q.includes("health kettle") ||
+      q.includes("health pot") ||
+      q.includes("cup pot") ||
+      q.includes("medicine kettle") ||
+      q.includes("herbal kettle") ||
+      q.includes("养生壶")) &&
+    !(haystack.includes("health kettle") ||
+      haystack.includes("health pot") ||
+      haystack.includes("medicine kettle") ||
+      haystack.includes("herbal kettle") ||
+      haystack.includes("tea maker") ||
+      haystack.includes("养生壶") ||
+      haystack.includes("kettle"))
   ) {
     score -= 12;
   }
@@ -1213,13 +1246,13 @@ function scoreProduct(product, userMessage, history = []) {
 function fallbackTextByLanguage(lang = "en") {
   switch (lang) {
     case "zh":
-      return "作为 AI 助手，我暂时无法准确回答这个问题。请留下你的邮箱，我们的同事会尽快联系你。;
+      return "作为 AI 助手，我暂时无法准确回答这个问题。请留下你的邮箱，我们的同事会尽快联系你。";
     case "es":
-      return "Como asistente de IA, no puedo responder esta pregunta con precisi贸n por ahora. Por favor, deje su correo electr贸nico y un miembro de nuestro equipo le responder谩 pronto.";
+      return "Como asistente de IA, no puedo responder esta pregunta con precisión por ahora. Por favor, deje su correo electrónico y un miembro de nuestro equipo le responderá pronto.";
     case "de":
-      return "Als KI-Assistent kann ich diese Frage im Moment nicht zuverl盲ssig beantworten. Bitte hinterlassen Sie Ihre E-Mail-Adresse, und ein Kollege wird sich bald bei Ihnen melden.";
+      return "Als KI-Assistent kann ich diese Frage im Moment nicht zuverlässig beantworten. Bitte hinterlassen Sie Ihre E-Mail-Adresse, und ein Kollege wird sich bald bei Ihnen melden.";
     case "fr":
-      return "En tant qu鈥檃ssistant IA, je ne peux pas r茅pondre pr茅cis茅ment 脿 cette question pour le moment. Veuillez laisser votre e-mail et un coll猫gue vous r茅pondra bient么t.";
+      return "En tant qu'assistant IA, je ne peux pas répondre précisément à cette question pour le moment. Veuillez laisser votre e-mail et un collègue vous répondra bientôt.";
     default:
       return "As an AI assistant, I can't answer this question accurately right now. Please leave your email and our colleague will reply soon.";
   }
@@ -1274,7 +1307,7 @@ function getPolicyLinkLabel(policy, lang) {
   if (title.includes("refund")) {
     return getLocalizedLabel(lang, {
       en: "View Refund Policy",
-      zh: "查看退款政策,
+      zh: "查看退款政策",
     });
   }
 
@@ -1301,7 +1334,7 @@ function getPolicyLinkLabel(policy, lang) {
 
   return getLocalizedLabel(lang, {
     en: "View Policy",
-    zh: "鏌ョ湅政策椤甸潰",
+    zh: "查看政策页面",
   });
 }
 
@@ -1324,21 +1357,21 @@ function getBlogLinkLabel(blog, lang) {
   if (category.includes("fermentation") || title.includes("fermentation")) {
     return getLocalizedLabel(lang, {
       en: "Read Fermentation Guide",
-      zh: "鏌ョ湅发酵鎸囧崡",
+      zh: "查看发酵指南",
     });
   }
 
   if (category.includes("warm_drinks") || title.includes("warm drinks")) {
     return getLocalizedLabel(lang, {
       en: "Read Warm Drinks Guide",
-      zh: "鏌ョ湅温热饮品鎸囧崡",
+      zh: "查看温热饮品指南",
     });
   }
 
   if (category.includes("gentle_cooking") || title.includes("gentle cooking")) {
     return getLocalizedLabel(lang, {
       en: "Read Gentle Cooking Guide",
-      zh: "查看轻烹饪指南,
+      zh: "查看轻烹饪指南",
     });
   }
 
@@ -1351,7 +1384,7 @@ function getBlogLinkLabel(blog, lang) {
 
   return getLocalizedLabel(lang, {
     en: "Read Full Guide",
-    zh: "鏌ョ湅瀹屾暣鎸囧崡",
+    zh: "查看完整指南",
   });
 }
 
@@ -1703,7 +1736,7 @@ export default async function handler(req, res) {
       return sendJsonWithLog(200, {
         response:
           latestLanguage === "zh"
-            ? "你发送消息太快了，请稍后再试。
+            ? "你发送消息太快了，请稍后再试。"
             : "You're sending messages too quickly. Please wait a moment and try again.",
         products: [],
         showContactForm: false,
@@ -1723,7 +1756,7 @@ export default async function handler(req, res) {
       return sendJsonWithLog(200, {
         response:
           latestLanguage === "zh"
-            ? "请将消息控制在 500 个字符以内，这样我可以更准确地帮助你。
+            ? "请将消息控制在 500 个字符以内，这样我可以更准确地帮助你。"
             : "Please keep your message under 500 characters so I can help more accurately.",
         products: [],
         showContactForm: false,
@@ -2112,7 +2145,7 @@ export default async function handler(req, res) {
         detailLink: "",
         detailLinkLabel: "",
         moreLink: shouldReturnProducts && kb.products[0]?.product_type ? `${STORE_URL}/search?q=${encodeURIComponent(kb.products[0].product_type)}` : "",
-        moreLinkLabel: latestLanguage === "zh" ? "鏌ョ湅鏇村" : "More products",
+        moreLinkLabel: latestLanguage === "zh" ? "查看更多" : "More products",
         source: "ai",
         showContactForm: false,
         fallbackTriggered: false,
