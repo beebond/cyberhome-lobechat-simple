@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const SIMPLECHAT_VERSION = "V9.3.2-DS8";
+const SIMPLECHAT_VERSION = "V9.3.3-CTX1";
 const IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 const MINIMIZE_ARCHIVE_DELAY_MS = 10 * 60 * 1000;
 const ARCHIVE_PLACEHOLDER_EMAIL = "conversation-archive@cyberhome.app";
@@ -182,7 +182,6 @@ function MoreLinkButton({ href, label }) {
   );
 }
 
-// 产品卡片 - 字体缩小一半优化
 function ProductCard({ product }) {
   if (!product) return null;
   const title = product.title || "Product";
@@ -536,41 +535,71 @@ export default function SimpleChat() {
   const bottomRef = useRef(null);
   const idleTimerRef = useRef(null);
   const hasTriggeredIdleRef = useRef(false);
-  const retryTimerRef = useRef(null); // 新增：用于延迟重试计算键盘高度
+  const retryTimerRef = useRef(null);
   const minimizeArchiveTimerRef = useRef(null);
   const archiveSentRef = useRef(false);
   const archiveInFlightRef = useRef(false);
 
-  // 检测是否在 iframe 中
+  const messagesRef = useRef([]);
+  const loadingRef = useRef(false);
+  const contextGreetingBootedRef = useRef(false);
+  const lastContextSignatureRef = useRef("");
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+
   useEffect(() => {
     setIsIframe(window.self !== window.top);
   }, []);
 
-  // 监听父页面发来的 open 消息（当用户点击悬浮按钮时）
   useEffect(() => {
     const handleMessage = (event) => {
       const data = event.data || {};
-      if (data.source === 'cyberhome-simplechat' && data.type === 'chat:open') {
+      if (data.source !== "cyberhome-simplechat") return;
+
+      if (data.type === "chat:open") {
         clearMinimizeArchiveTimer();
         setIsOpen(true);
+
+        const requestedTrigger = Boolean(data.triggerContextGreeting);
+        const contextSignature =
+          data.contextSignature ||
+          JSON.stringify(data.context || {}) ||
+          "";
+
+        const shouldBootGreeting =
+          requestedTrigger &&
+          (!contextGreetingBootedRef.current ||
+            lastContextSignatureRef.current !== contextSignature);
+
+        if (shouldBootGreeting) {
+          contextGreetingBootedRef.current = true;
+          lastContextSignatureRef.current = contextSignature;
+
+          setTimeout(() => {
+            sendMessageInternal("__context_greeting__", {
+              internal: true,
+              silentUserMessage: true,
+              historyOverride: [],
+              replaceInitialAssistantMessage: true,
+            });
+          }, 0);
+        }
       }
     };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, []);
 
   useEffect(() => {
     setMounted(true);
-    setMessages([
-      {
-        id: 1,
-        role: "assistant",
-        content: "Welcome to CyberHome Support! How can we help you today?",
-        createdAt: new Date().toISOString(),
-        products: [],
-        meta: {},
-      },
-    ]);
+    setMessages([]);
   }, []);
 
   useEffect(() => {
@@ -588,7 +617,6 @@ export default function SimpleChat() {
         meta: m.meta || {},
       }));
   }, [messages]);
-
 
   function clearMinimizeArchiveTimer() {
     if (minimizeArchiveTimerRef.current) {
@@ -870,33 +898,50 @@ export default function SimpleChat() {
     }
   }
 
-  async function sendMessage() {
-    const text = input.trim();
-    if (!text || loading) return;
+  async function sendMessageInternal(text, options = {}) {
+    const {
+      internal = false,
+      silentUserMessage = false,
+      historyOverride = null,
+      replaceInitialAssistantMessage = false,
+    } = options;
+
+    const messageText = String(text || "").trim();
+    if (!messageText || loadingRef.current) return;
 
     touchActivity();
-
-    const userMsg = {
-      id: Date.now(),
-      role: "user",
-      content: text,
-      createdAt: new Date().toISOString(),
-      products: [],
-      meta: {},
-    };
-
-    const nextMessages = [...messages.filter((m) => m.type !== "lead_form" && m.type !== "rating_panel"), userMsg];
-    setMessages(nextMessages);
-    setInput("");
     setLoading(true);
 
     try {
-      const history = nextMessages.map((m) => ({ role: m.role, content: m.content, meta: m.meta || {} }));
+      let nextMessages = messagesRef.current.filter((m) => m.type !== "lead_form" && m.type !== "rating_panel");
+
+      if (!silentUserMessage) {
+        const userMsg = {
+          id: Date.now(),
+          role: "user",
+          content: messageText,
+          createdAt: new Date().toISOString(),
+          products: [],
+          meta: internal ? { internal: true } : {},
+        };
+        nextMessages = [...nextMessages, userMsg];
+        setMessages(nextMessages);
+      }
+
+      const historySource = Array.isArray(historyOverride)
+        ? historyOverride
+        : nextMessages;
+
+      const history = historySource.map((m) => ({
+        role: m.role,
+        content: m.content,
+        meta: m.meta || {},
+      }));
 
       const resp = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, history, sessionId }),
+        body: JSON.stringify({ message: messageText, history, sessionId }),
       });
 
       const data = await resp.json();
@@ -915,7 +960,14 @@ export default function SimpleChat() {
         },
       };
 
-      setMessages((prev) => [...prev.filter((m) => m.type !== "lead_form" && m.type !== "rating_panel"), aiMsg]);
+      if (replaceInitialAssistantMessage && silentUserMessage) {
+        setMessages([aiMsg]);
+      } else {
+        setMessages((prev) => [
+          ...prev.filter((m) => m.type !== "lead_form" && m.type !== "rating_panel"),
+          aiMsg,
+        ]);
+      }
 
       const aiText = String(data?.response || "");
       const shouldShowLeadForm =
@@ -942,30 +994,45 @@ export default function SimpleChat() {
       const lowerAiText = aiText.toLowerCase();
       const disallowedHit = disallowedNoAnswerPatterns.some((p) => lowerAiText.includes(p));
 
-      if (shouldShowLeadForm || looksLikeFallback || disallowedHit) {
-        const fallbackNote = text && !leadForm.note ? `Customer asked: ${text}` : "";
+      if (!silentUserMessage && (shouldShowLeadForm || looksLikeFallback || disallowedHit)) {
+        const fallbackNote = messageText && !leadForm.note ? `Customer asked: ${messageText}` : "";
         injectLeadForm(data?.meta?.reason || "ai_handoff", fallbackNote);
       }
     } catch (error) {
       console.error("API error:", error);
 
-      setMessages((prev) => [
-        ...prev.filter((m) => m.type !== "lead_form" && m.type !== "rating_panel"),
-        {
-          id: Date.now() + 1,
-          role: "assistant",
-          content:
-            "As an AI assistant, I can't answer this question accurately right now. Please email support@cyberhome.app or fill in the feedback form below, and our colleague will get back to you soon.",
-          createdAt: new Date().toISOString(),
-          products: [],
-          meta: { showContactForm: true, handoffToHuman: true, reason: "frontend_fetch_error" },
-        },
-      ]);
+      const fallbackMsg = {
+        id: Date.now() + 1,
+        role: "assistant",
+        content:
+          "As an AI assistant, I can't answer this question accurately right now. Please email support@cyberhome.app or fill in the feedback form below, and our colleague will get back to you soon.",
+        createdAt: new Date().toISOString(),
+        products: [],
+        meta: { showContactForm: true, handoffToHuman: true, reason: "frontend_fetch_error" },
+      };
 
-      injectLeadForm("frontend_fetch_error");
+      if (replaceInitialAssistantMessage && silentUserMessage) {
+        setMessages([fallbackMsg]);
+      } else {
+        setMessages((prev) => [
+          ...prev.filter((m) => m.type !== "lead_form" && m.type !== "rating_panel"),
+          fallbackMsg,
+        ]);
+      }
+
+      if (!silentUserMessage) {
+        injectLeadForm("frontend_fetch_error");
+      }
     } finally {
       setLoading(false);
     }
+  }
+
+  async function sendMessage() {
+    const text = input.trim();
+    if (!text || loading) return;
+    setInput("");
+    await sendMessageInternal(text, { internal: false, silentUserMessage: false });
   }
 
   function onKeyDown(e) {
@@ -987,7 +1054,6 @@ export default function SimpleChat() {
     injectRatingPanel("end_chat");
   }
 
-  // 处理最大化按钮点击
   const handleExpandClick = () => {
     const newExpanded = !isExpanded;
     setIsExpanded(newExpanded);
@@ -999,30 +1065,29 @@ export default function SimpleChat() {
     }
   };
 
-  // 输入框焦点处理 - 改进版
   const handleFocus = () => {
     setFocused(true);
     const viewportHeight = window.visualViewport?.height || window.innerHeight;
     setFocusViewportHeight(viewportHeight);
-    // 延迟多次计算键盘高度，适应不同浏览器键盘弹出动画
+
     const tryUpdateOffset = (delay) => {
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       retryTimerRef.current = setTimeout(() => {
-        if (!focused) return; // 已失焦则忽略
+        if (!focused) return;
         const currentHeight = window.visualViewport?.height || window.innerHeight;
         const diff = viewportHeight - currentHeight;
         if (diff > 0) {
-          setKeyboardOffset((prev) => Math.max(prev, diff)); // 取最大值，避免窗口弹得不够高
+          setKeyboardOffset((prev) => Math.max(prev, diff));
         }
-        // 如果还没有完全展开，继续尝试
         if (diff < 50 && diff > 0) {
           tryUpdateOffset(100);
         }
       }, delay);
     };
-    tryUpdateOffset(100);  // 100ms后尝试
-    tryUpdateOffset(200);  // 200ms后尝试
-    tryUpdateOffset(300);  // 300ms后尝试
+
+    tryUpdateOffset(100);
+    tryUpdateOffset(200);
+    tryUpdateOffset(300);
   };
 
   const handleBlur = () => {
@@ -1041,7 +1106,6 @@ export default function SimpleChat() {
     };
   }, []);
 
-  // 监听窗口 resize 和 visualViewport resize
   useEffect(() => {
     const updateKeyboardOffset = () => {
       if (!focused || !focusViewportHeight) {
@@ -1057,12 +1121,12 @@ export default function SimpleChat() {
       }
     };
 
-    window.addEventListener('resize', updateKeyboardOffset);
-    window.visualViewport?.addEventListener('resize', updateKeyboardOffset);
+    window.addEventListener("resize", updateKeyboardOffset);
+    window.visualViewport?.addEventListener("resize", updateKeyboardOffset);
 
     return () => {
-      window.removeEventListener('resize', updateKeyboardOffset);
-      window.visualViewport?.removeEventListener('resize', updateKeyboardOffset);
+      window.removeEventListener("resize", updateKeyboardOffset);
+      window.visualViewport?.removeEventListener("resize", updateKeyboardOffset);
     };
   }, [focused, focusViewportHeight]);
 
@@ -1071,13 +1135,11 @@ export default function SimpleChat() {
   const hasOverlayPanel = messages.some((m) => m.type === "lead_form" || m.type === "rating_panel");
 
   const baseBottom = "max(18px, env(safe-area-inset-bottom))";
-  // 限制最大偏移量，避免窗口超出屏幕顶部（键盘高度通常不超过视口一半）
   const maxOffset = Math.min(keyboardOffset, window.innerHeight * 0.5);
   const bottomValue = maxOffset > 0 ? `calc(${maxOffset}px + 18px)` : baseBottom;
 
   return (
     <>
-      {/* 悬浮按钮 - 仅在独立模式且窗口关闭时显示 */}
       {!isOpen && (
         <button
           onClick={() => {
@@ -1110,7 +1172,6 @@ export default function SimpleChat() {
         </button>
       )}
 
-      {/* 聊天窗口 - 始终固定定位，由 isOpen 控制显示隐藏 */}
       {isOpen && (
         <div
           style={{
@@ -1132,7 +1193,6 @@ export default function SimpleChat() {
             transition: "bottom 0.1s ease-out",
           }}
         >
-          {/* 头部 - 固定 */}
           <div style={{ background: HEADER_BG, color: "#fff", padding: "18px 22px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexShrink: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <LogoBadge size={24} rounded={8} />
@@ -1149,6 +1209,7 @@ export default function SimpleChat() {
                 onClick={() => {
                   scheduleMinimizeArchive();
                   setIsOpen(false);
+                  contextGreetingBootedRef.current = false;
                   if (window.parent && window.parent !== window) {
                     window.parent.postMessage(
                       { source: "cyberhome-simplechat", type: "chat:minimize" },
@@ -1163,7 +1224,6 @@ export default function SimpleChat() {
             </div>
           </div>
 
-          {/* 消息区域 - 可滚动 */}
           <div style={{ padding: 20, flex: 1, overflowY: "auto", background: "#ededed", minHeight: 0 }} onMouseMove={touchActivity} onClick={touchActivity}>
             {messages.map((msg) => {
               const isUser = msg.role === "user";
@@ -1264,7 +1324,6 @@ export default function SimpleChat() {
             <div ref={bottomRef} />
           </div>
 
-          {/* 底部输入区域 - 固定，仅当无覆盖面板时显示 */}
           {!hasOverlayPanel && (
             <div style={{ padding: 16, background: SURFACE, borderTop: "1px solid #e5e7eb", flexShrink: 0 }}>
               <textarea
